@@ -1,0 +1,32 @@
+package org.tangowiz.app
+import android.app.Instrumentation
+import android.os.Bundle
+import android.os.SystemClock
+import org.tensorflow.lite.Interpreter
+import org.json.JSONObject
+import org.json.JSONArray
+import java.io.File
+import java.io.FileInputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+class RecognitionInstrumentation:Instrumentation(){
+ private var arguments=Bundle()
+ override fun onCreate(args:Bundle?){super.onCreate(args);arguments=args?:Bundle();start()}
+ override fun onStart(){if(arguments.getString("mode")=="resident"){ResidentValidation.run(this);return};val report=JSONObject();var handle=0L
+ try{
+  check(!SignalGate.audible(FloatArray(8000))){"Silence gate failed"};check(!SignalGate.audible(FloatArray(8000){if(it%2==0)1f/32768 else -1f/32768})){"Near-silence gate failed"}
+  val ctx=targetContext;val began=SystemClock.elapsedRealtimeNanos()
+  val model=ctx.assets.openFd("nmfp.tflite").use{fd->FileInputStream(fd.fileDescriptor).channel.use{ch->Interpreter(ch.map(java.nio.channels.FileChannel.MapMode.READ_ONLY,fd.startOffset,fd.length),Interpreter.Options().setNumThreads(2))}}
+  report.put("model_load_ms",(SystemClock.elapsedRealtimeNanos()-began)/1e6)
+  handle=NativeEngine.init(ctx.assets);report.put("index_load_ms",(SystemClock.elapsedRealtimeNanos()-began)/1e6)
+  val bytes=File(arguments.getString("pcm","/data/local/tmp/event.pcm")).readBytes();val pcm=FloatArray(bytes.size/4);ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(pcm)
+  check(SignalGate.audible(pcm)){"Real event fixture incorrectly gated"};report.put("signal_gate_tests","silence and near-silence rejected; real Tanturi accepted")
+  val input=ByteBuffer.allocateDirect(8448*4).order(ByteOrder.nativeOrder());val output=ByteBuffer.allocateDirect(128*4).order(ByteOrder.nativeOrder());val rows=JSONArray()
+  for(start in 0..pcm.size-8000 step 4000){val t=SystemClock.elapsedRealtimeNanos();val window=pcm.copyOfRange(start,start+8000);check(SignalGate.audible(window)){"Real event window incorrectly gated at $start"};val features=NativeEngine.features(window);input.rewind();input.asFloatBuffer().put(features);output.rewind();model.run(input,output);val embedding=FloatArray(128);output.rewind();output.asFloatBuffer().get(embedding);val inference=SystemClock.elapsedRealtimeNanos();val raw=NativeEngine.search(handle,embedding,1,1f,start/8000f);rows.put(JSONObject().put("offset",start/8000.0).put("fp_ms",(inference-t)/1e6).put("lookup_ms",(SystemClock.elapsedRealtimeNanos()-inference)/1e6).put("result",JSONObject(raw)))}
+  val last=rows.getJSONObject(rows.length()-1).getJSONObject("result").getJSONArray("candidates").getJSONObject(0)
+  check(last.getString("id")=="palazzo-f57cf688973fbd86315e1d87"){"Unexpected recording ${last.getString("id")}"}
+  check(last.getString("orchestra")=="Ricardo Tanturi"){"Unexpected orchestra"}
+  Store(ctx).result(Candidate(last.getString("id"),last.getString("orchestra"),last.getString("title"),last.optString("singer"),last.optString("year"),last.getDouble("score"),(last.getDouble("confidence")*100).toInt()),null,10.0,"validation-event-95aHsFHdWY")
+  report.put("history_entry_created",true).put("rows",rows).put("status","passed_execution");model.close();File(ctx.filesDir,"instrumentation.json").writeText(report.toString(2));finish(0,Bundle().apply{putString("report",report.toString())})
+ }catch(e:Throwable){report.put("status","failed").put("error",e.stackTraceToString());File(targetContext.filesDir,"instrumentation.json").writeText(report.toString(2));finish(1,Bundle().apply{putString("error",e.stackTraceToString())})}finally{if(handle!=0L)NativeEngine.close(handle)}}
+}

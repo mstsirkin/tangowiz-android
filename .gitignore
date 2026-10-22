@@ -1,0 +1,15 @@
+/.gradle/
+/.cxx/
+**/build/
+/dist/
+/local.properties
+__pycache__/
+*.pyc
+*.keystore
+*.jks
+/app/src/main/assets/catalog.bin
+/app/src/main/assets/nmfp.tflite
+/app/src/main/assets/catalog.json
+/app/src/main/assets/model-provenance.json
+/app/src/main/assets/notices/model-download-provenance.json
+/app/libs/
