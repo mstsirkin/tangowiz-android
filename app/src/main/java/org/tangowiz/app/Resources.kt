@@ -12,28 +12,29 @@ import java.util.zip.ZipInputStream
 import org.tensorflow.lite.Interpreter
 import java.util.UUID
 
-const val RESOURCE_FORMAT=1
-const val RESOURCE_MANIFEST_URL="https://github.com/mstsirkin/tangowiz-android/releases/download/resources-v1/manifest.json"
+const val RESOURCE_FORMAT=2
+const val RESOURCE_MANIFEST_URL="https://github.com/mstsirkin/tangowiz-android/releases/download/resources-v2/manifest.json"
 const val APP_UPDATE_URL="https://github.com/mstsirkin/tangowiz-android/releases/latest"
 class AppUpdateRequired(message:String):IOException(message)
+fun validateCatalogFormat(bundle:BundleSnapshot){val expected="TWIDX00${bundle.formatVersion}".toByteArray(Charsets.US_ASCII);val actual=ByteArray(8);FileInputStream(bundle.catalog).use{input->var count=0;while(count<8){val n=input.read(actual,count,8-count);require(n>0){"Truncated catalog header"};count+=n}};require(actual.contentEquals(expected)){"Manifest format does not match catalog format"}}
 data class ResourceState(val kind:String="idle",val message:String="",val received:Long=0,val total:Long=0)
 object ResourceProgress {
  @Volatile var current=ResourceState()
  val listeners=CopyOnWriteArrayList<()->Unit>()
  fun publish(value:ResourceState){current=value;listeners.forEach{it()}}
 }
-data class BundleSnapshot(val directory:File,val version:String,val archiveHash:String){val catalog get()=File(directory,"catalog.bin");val model get()=File(directory,"nmfp.tflite")}
+data class BundleSnapshot(val directory:File,val version:String,val archiveHash:String,val formatVersion:Int=1){val catalog get()=File(directory,"catalog.bin");val model get()=File(directory,"nmfp.tflite")}
 data class ResourceFile(val bytes:Long,val sha256:String)
-data class ResourceManifest(val version:String,val archiveUrl:String,val archive:ResourceFile,val files:Map<String,ResourceFile>,val json:JSONObject){
+data class ResourceManifest(val version:String,val archiveUrl:String,val archive:ResourceFile,val files:Map<String,ResourceFile>,val json:JSONObject,val formatVersion:Int=1){
  companion object {
   fun parse(json:JSONObject):ResourceManifest {
    try{
-    if(json.getInt("formatVersion")!=RESOURCE_FORMAT)throw AppUpdateRequired("This resource format needs a newer app")
+    val format=json.getInt("formatVersion");if(format !in 1..RESOURCE_FORMAT)throw AppUpdateRequired("This resource format needs a newer app")
     val version=json.getString("bundleVersion");require(version.isNotBlank()&&version.length<=128)
     fun file(j:JSONObject,max:Long):ResourceFile{val size=j.getLong("bytes");val hash=j.getString("sha256").lowercase();require(size in 1..max&&hash.matches(Regex("[0-9a-f]{64}")));return ResourceFile(size,hash)}
     val a=json.getJSONObject("archive");val url=a.getString("url");require(URL(url).protocol=="https"||URL(url).host in setOf("127.0.0.1","localhost"))
     val f=json.getJSONObject("files");require(f.keys().asSequence().toSet()==setOf("catalog.bin","nmfp.tflite"))
-    return ResourceManifest(version,url,file(a,9L*1024*1024*1024),mapOf("catalog.bin" to file(f.getJSONObject("catalog.bin"),8L*1024*1024*1024),"nmfp.tflite" to file(f.getJSONObject("nmfp.tflite"),512L*1024*1024)),json)
+    return ResourceManifest(version,url,file(a,9L*1024*1024*1024),mapOf("catalog.bin" to file(f.getJSONObject("catalog.bin"),8L*1024*1024*1024),"nmfp.tflite" to file(f.getJSONObject("nmfp.tflite"),512L*1024*1024)),json,format)
    }catch(e:AppUpdateRequired){throw e}catch(e:Exception){throw AppUpdateRequired("The resource manifest is incompatible; update the app")}
   }
  }
@@ -55,7 +56,7 @@ object ResourcePins {
 }
 /** Immutable generations plus an atomic pointer; network and ZIP work stay off the UI thread. */
 class ResourceStore(context:Context,private val transport:ResourceTransport=HttpResourceTransport(),private val manifestUrl:String=RESOURCE_MANIFEST_URL,private val progress:(ResourceState)->Unit={ResourceProgress.publish(it)},private val validate:(BundleSnapshot)->Unit={bundle->
- var native=0L;try{native=NativeEngine.initFile(bundle.catalog.absolutePath);FileInputStream(bundle.model).channel.use{ch->Interpreter(ch.map(java.nio.channels.FileChannel.MapMode.READ_ONLY,0,ch.size()),Interpreter.Options().setNumThreads(1)).use{model->require(model.getInputTensor(0).shape().contentEquals(intArrayOf(1,256,33,1))&&model.getOutputTensor(0).shape().contentEquals(intArrayOf(1,128))){"Unsupported recognition model shape"}}}}finally{if(native!=0L)NativeEngine.close(native)}
+ var native=0L;try{validateCatalogFormat(bundle);native=NativeEngine.initFile(bundle.catalog.absolutePath);FileInputStream(bundle.model).channel.use{ch->Interpreter(ch.map(java.nio.channels.FileChannel.MapMode.READ_ONLY,0,ch.size()),Interpreter.Options().setNumThreads(1)).use{model->require(model.getInputTensor(0).shape().contentEquals(intArrayOf(1,256,33,1))&&model.getOutputTensor(0).shape().contentEquals(intArrayOf(1,128))){"Unsupported recognition model shape"}}}}finally{if(native!=0L)NativeEngine.close(native)}
 },private val beforeActivationCommit:()->Unit={}){
  val root=File(context.filesDir,"resources-v1").apply{mkdirs()}
  private val pointer=AtomicFile(File(root,"active.json"))
@@ -69,7 +70,7 @@ class ResourceStore(context:Context,private val transport:ResourceTransport=Http
  private fun write(file:File,j:JSONObject){val a=AtomicFile(file);val out=a.startWrite();try{out.write(j.toString().toByteArray());out.fd.sync();a.finishWrite(out)}catch(e:Exception){a.failWrite(out);throw e}}
  fun current():BundleSnapshot?=synchronized(ResourcePins.lock){runCatching{
   val j=pointer.openRead().use{JSONObject(it.bufferedReader().readText())};val m=ResourceManifest.parse(j);val directory=j.getString("directory");require(directory.matches(Regex("bundle-[a-f0-9]{64}-[a-f0-9-]{36}")));val dir=File(root,directory)
-  require(File(dir,"verified.json").isFile&&m.files.all{(n,v)->File(dir,n).isFile&&File(dir,n).length()==v.bytes});BundleSnapshot(dir,m.version,m.archive.sha256)
+  require(File(dir,"verified.json").isFile&&m.files.all{(n,v)->File(dir,n).isFile&&File(dir,n).length()==v.bytes});BundleSnapshot(dir,m.version,m.archive.sha256,m.formatVersion)
  }.getOrNull()}
  fun pinCurrent():BundleSnapshot?=synchronized(ResourcePins.lock){current()?.also{val key=it.directory.absolutePath;ResourcePins.held[key]=(ResourcePins.held[key]?:0)+1}}
  fun cleanupUnused(){synchronized(ResourcePins.lock){val active=current()?.directory?.absolutePath;root.listFiles()?.filter{it.isDirectory&&it.name.startsWith("bundle-")&&it.absolutePath!=active&&it.absolutePath !in ResourcePins.held}?.forEach{it.deleteRecursively()}}}
@@ -104,7 +105,7 @@ class ResourceStore(context:Context,private val transport:ResourceTransport=Http
     FileOutputStream(File(stage,entry.name)).use{fileOut->val out=BufferedOutputStream(fileOut,262144);val b=ByteArray(262144);while(true){if(Thread.currentThread().isInterrupted)throw InterruptedIOException("Download paused; retry to continue");val n=zip.read(b);if(n<0)break;bytes+=n;requireDownload(bytes<=expected.bytes,"Resource ZIP expands beyond expected size");digest.update(b,0,n);out.write(b,0,n);rawVerified+=n;verification(m.archive.bytes+rawVerified)};out.flush();fileOut.fd.sync()}
     requireDownload(bytes==expected.bytes&&digest.digest().joinToString(""){"%02x".format(it)}==expected.sha256,"Resource file failed verification");zip.closeEntry()
    }};requireDownload(seen==m.files.keys,"Incomplete resource ZIP")
-   try{validate(BundleSnapshot(stage,m.version,m.archive.sha256))}catch(e:Exception){throw AppUpdateRequired("These recognition resources need a newer app")}
+   try{validate(BundleSnapshot(stage,m.version,m.archive.sha256,m.formatVersion))}catch(e:Exception){throw AppUpdateRequired("These recognition resources need a newer app")}
    write(File(stage,"verified.json"),m.json);val target=File(root,"bundle-${m.archive.sha256}-${UUID.randomUUID()}")
    synchronized(ResourcePins.lock){
    requireDownload(stage.renameTo(target),"Cannot activate resource directory");beforeActivationCommit()

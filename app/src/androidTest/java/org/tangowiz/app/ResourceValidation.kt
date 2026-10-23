@@ -34,7 +34,7 @@ object ResourceValidation {
   val pinned=s.pinCurrent()!!
   manifestNetwork=true;expect<IOException>{s.check(false)};manifestNetwork=false;check(s.current()!!.directory==first.directory);checks.put("network failure retains installed bundle and remains retryable")
   manifestStatus=503;val transient=runCatching{s.check(false)}.exceptionOrNull();check(transient is IOException&&transient !is AppUpdateRequired);manifestStatus=404;expect<AppUpdateRequired>{s.check(false)};manifestStatus=200;checks.put("404 format retired differs from 503/network retry")
-  manifest.put("formatVersion",2);expect<AppUpdateRequired>{s.check(false)};manifest.put("formatVersion",1);checks.put("incompatible manifest requests app update")
+  manifest.put("formatVersion",3);expect<AppUpdateRequired>{s.check(false)};manifest.put("formatVersion",1);checks.put("incompatible manifest requests app update")
   manifest=manifest(archive,catalog,model,"bad-hash");manifest.getJSONObject("archive").put("sha256","0".repeat(64));expect<IOException>{s.check(true)};check(s.current()!!.directory==first.directory);checks.put("bad archive hash cannot replace current bundle")
   archive=zip(listOf("catalog.bin" to catalog,"nmfp.tflite" to model,"../evil" to byteArrayOf(1)));manifest=manifest(archive,catalog,model,"unsafe");expect<IOException>{s.check(true)};check(s.current()!!.directory==first.directory);checks.put("ZIP traversal/extra entries rejected before activation")
   val normalZip=zip(listOf("catalog.bin" to catalog,"nmfp.tflite" to model))

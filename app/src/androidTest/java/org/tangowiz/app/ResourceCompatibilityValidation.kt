@@ -1,0 +1,24 @@
+package org.tangowiz.app
+import android.app.Instrumentation
+import android.content.ContextWrapper
+import android.os.Bundle
+import org.json.*
+import java.io.*
+import java.security.MessageDigest
+import java.util.zip.*
+object ResourceCompatibilityValidation{
+ fun run(i:Instrumentation){val checks=JSONArray();val ctx=object:ContextWrapper(i.targetContext){override fun getFilesDir()=File(super.getFilesDir(),"format-compatibility-test").apply{mkdirs()}};File(ctx.filesDir,"resources-v1").deleteRecursively()
+  fun hash(b:ByteArray)=MessageDigest.getInstance("SHA-256").digest(b).joinToString(""){"%02x".format(it)}
+  var catalog="TWIDX001fixture-one".toByteArray();val model="model-fixture".toByteArray();var archive=byteArrayOf();var manifest=JSONObject();val requests=java.util.concurrent.CopyOnWriteArrayList<Pair<String,Map<String,String>>>()
+  fun data(format:Int,name:String){val out=ByteArrayOutputStream();ZipOutputStream(out).use{z->for((n,b) in listOf("catalog.bin" to catalog,"nmfp.tflite" to model)){z.putNextEntry(ZipEntry(n));z.write(b);z.closeEntry()}};archive=out.toByteArray();manifest=JSONObject().put("formatVersion",format).put("bundleVersion",name).put("archive",JSONObject().put("url","https://fixture.invalid/archive").put("bytes",archive.size).put("sha256",hash(archive))).put("files",JSONObject().put("catalog.bin",JSONObject().put("bytes",catalog.size).put("sha256",hash(catalog))).put("nmfp.tflite",JSONObject().put("bytes",model.size).put("sha256",hash(model))))}
+  val transport=ResourceTransport{url,headers->requests+=url to headers;if(url==RESOURCE_MANIFEST_URL)RemoteResponse(200,emptyMap(),manifest.toString().byteInputStream()) else{val range=Regex("bytes=(\\d+)-(\\d*)").matchEntire(headers.getValue("Range"))!!;val start=range.groupValues[1].toInt();val end=range.groupValues[2].toIntOrNull()?:archive.lastIndex;RemoteResponse(206,mapOf("Content-Range" to "bytes $start-$end/${archive.size}"),archive.copyOfRange(start,end+1).inputStream())}}
+  fun store()=ResourceStore(ctx,transport,progress={},validate={validateCatalogFormat(it)})
+  try{check(RESOURCE_MANIFEST_URL.contains("resources-v2/manifest.json"));data(1,"v1");var s=store();s.automaticChecks=false;check(!s.dueAutomaticCheck()&&requests.isEmpty());s.check(true);check(s.current()!!.formatVersion==1);checks.put("preferred V2 URL still accepts and installs V1 without automatic polling")
+   val old=s.pinCurrent()!!;catalog="TWIDX001legacy-pending".toByteArray();data(1,"v1-pending");val sha=manifest.getJSONObject("archive").getString("sha256");File(s.root,"pending.json").writeText(manifest.toString());RandomAccessFile(File(s.root,"$sha.part"),"rw").use{it.setLength(archive.size.toLong());it.write(archive,0,8);it.fd.sync()};File(s.root,"$sha.ranges.json").writeText(JSONObject().put("sha256",sha).put("bytes",archive.size).put("done",JSONArray(listOf(8,0,0,0))).toString());val before=requests.size;s=store();s.resume();check(s.current()!!.formatVersion==1&&requests.drop(before).none{it.first==RESOURCE_MANIFEST_URL});check(requests.drop(before).any{it.second["Range"]?.startsWith("bytes=8-")==true});checks.put("persisted V1 manifest/checkpoint resumes directly without rewriting or V2 check")
+   catalog="TWIDX002fixture-two".toByteArray();data(2,"v2");s.check(true);check(s.current()!!.formatVersion==2&&s.current()!!.catalog.readBytes().contentEquals(catalog));s.cleanupUnused();check(old.directory.exists());ResourcePins.release(old);s.cleanupUnused();check(!old.directory.exists());checks.put("validated V2 upgrade atomically replaces V1 while old mapped snapshot remains pinned")
+   val current=s.current()!!.archiveHash;catalog="TWIDX001mismatch".toByteArray();data(2,"bad-v2");check(runCatching{s.check(true)}.exceptionOrNull() is AppUpdateRequired);check(s.current()!!.archiveHash==current);catalog="TWIDX002mismatch".toByteArray();data(1,"bad-v1");check(runCatching{s.check(true)}.exceptionOrNull() is AppUpdateRequired);check(s.current()!!.archiveHash==current);checks.put("both manifest/catalog version mismatches preserve working V2 data")
+   manifest.put("formatVersion",3);check(runCatching{s.check(false)}.exceptionOrNull() is AppUpdateRequired);check(s.current()!!.archiveHash==current);checks.put("unknown future format rejects without invalidating installed resources")
+   val report=JSONObject().put("status","passed").put("checks",checks).put("count",checks.length());File(i.targetContext.filesDir,"resource-compatibility-validation.json").writeText(report.toString(2));i.finish(0,Bundle().apply{putString("summary",report.toString())})
+  }catch(e:Throwable){File(i.targetContext.filesDir,"resource-compatibility-validation.json").writeText(JSONObject().put("status","failed").put("checks",checks).put("error",e.stackTraceToString()).toString(2));i.finish(1,Bundle().apply{putString("error",e.stackTraceToString())})}
+ }
+}

@@ -14,15 +14,22 @@ namespace tangowiz {
 namespace {std::string quote(const std::string&s){std::ostringstream o;o<<'"';for(unsigned char c:s){if(c=='"'||c=='\\')o<<'\\'<<c;else if(c<32)o<<' ';else o<<c;}o<<'"';return o.str();}}
 Engine::Engine(const uint8_t*b,uint64_t bytes):data(b),size(bytes){
  if(reinterpret_cast<uintptr_t>(b)%8)throw std::runtime_error("Catalog must be aligned to8bytes");
- if(bytes<4096||memcmp(b,"TWIDX001",8))throw std::runtime_error("Invalid catalog magic");
- uint64_t h[8];memcpy(h,b+8,sizeof(h));if(h[0]!=1||h[1]!=128||h[2]!=64||h[7]!=9)throw std::runtime_error("Unsupported catalog");
+ if(bytes<4096)throw std::runtime_error("Catalog header is truncated");
+ const bool v1=memcmp(b,"TWIDX001",8)==0,v2=memcmp(b,"TWIDX002",8)==0;
+ if(!v1&&!v2)throw std::runtime_error("Invalid catalog magic");
+ uint64_t h[8];memcpy(h,b+8,sizeof(h));if((v1&&h[0]!=1)||(v2&&h[0]!=2)||h[1]!=128||h[2]!=64||h[7]!=9)throw std::runtime_error("Unsupported catalog");
+ formatVersion=h[0];metadataStride=v2?7:6;
  nlist=h[3];nblocks=h[4];ntotal=h[5];nrefs=h[6];if(!nlist||nlist>65536||!nblocks||nblocks>100000000||!nrefs||nrefs>10000000||ntotal>nblocks*16)throw std::runtime_error("Catalog dimensions");
  Slice s[9];memcpy(s,b+72,sizeof(s));for(auto&v:s)if(v.offset<4096||v.offset%4096||v.offset>bytes||v.size>bytes-v.offset)throw std::runtime_error("Catalog section bounds");
- uint64_t expected[]={nblocks*64*16,nblocks*16*8,(nlist+1)*8,64*256*2*4,nlist*128*4,(nrefs+1)*8,ntotal*4,nrefs*24,s[8].size};for(int i=0;i<9;i++)if(s[i].size!=expected[i]||(i&&s[i].offset<s[i-1].offset+s[i-1].size))throw std::runtime_error("Catalog shape mismatch");
+ uint64_t expected[]={nblocks*64*16,nblocks*16*8,(nlist+1)*8,64*256*2*4,nlist*128*4,(nrefs+1)*8,ntotal*4,nrefs*metadataStride*4,s[8].size};for(int i=0;i<9;i++)if(s[i].size!=expected[i]||(i&&s[i].offset<s[i-1].offset+s[i-1].size))throw std::runtime_error("Catalog shape mismatch");
  codes=b+s[0].offset;ids=(const int64_t*)(b+s[1].offset);offsets=(const int64_t*)(b+s[2].offset);pq=(const float*)(b+s[3].offset);coarse=(const float*)(b+s[4].offset);bounds=(const int64_t*)(b+s[5].offset);reverse=(const uint32_t*)(b+s[6].offset);metadata=(const uint32_t*)(b+s[7].offset);strings=(const char*)(b+s[8].offset);stringsize=s[8].size;
  if(offsets[0]!=0||offsets[nlist]!=int64_t(nblocks)||bounds[0]!=0||bounds[nrefs]!=int64_t(ntotal)||!stringsize||strings[stringsize-1])throw std::runtime_error("Catalog terminal bounds");
  for(uint64_t i=1;i<=nlist;i++)if(offsets[i]<offsets[i-1])throw std::runtime_error("Catalog list order");for(uint64_t i=1;i<=nrefs;i++)if(bounds[i]<bounds[i-1])throw std::runtime_error("Catalog recording order");
- for(uint64_t i=0;i<nrefs*6;i++)if(metadata[i]>=stringsize)throw std::runtime_error("Catalog string bounds");
+ for(uint64_t track=0;track<nrefs;track++){
+  const auto*row=metadataRow(track);for(int field=0;field<6;field++)if(row[field]>=stringsize)throw std::runtime_error("Catalog string bounds");
+  if(v2&&row[6])groupMembers.push_back((uint64_t(row[6])<<32)|track);
+ }
+ if(v2)std::sort(groupMembers.begin(),groupMembers.end());
 }
 std::string Engine::text(uint32_t at)const {const char*p=strings+at;const void*end=memchr(p,0,stringsize-at);if(!end)throw std::runtime_error("Unterminated string");return std::string(p,(const char*)end-p);}
 std::vector<int64_t> Engine::neighbors(const float*q,std::vector<float>*output){
@@ -71,29 +78,45 @@ std::string Engine::search(const float*e,int count,float speed,float offset){
  // Group only direct, sustained reference fingerprint matches to the strongest
  // anchor. Candidate ranking scores and database identities remain untouched.
  auto groupingBegin=std::chrono::steady_clock::now();
- struct Group {Hit anchor;std::vector<Hit> members;std::vector<DuplicateEvidence> evidence;};
+ struct Group {Hit anchor;std::vector<Hit> members;std::vector<DuplicateEvidence> evidence;std::vector<uint64_t> metadataTracks;};
  std::vector<Group> groups;
- for(size_t i=0;i<std::min<size_t>(64,hits.size());i++){
-  const auto&hit=hits[i];bool joined=false;
-  for(auto&g:groups){auto evidence=duplicate(g.anchor,hit);if(evidence.matched){g.members.push_back(hit);g.evidence.push_back(evidence);joined=true;break;}}
-  if(!joined&&groups.size()<16)groups.push_back({hit,{hit},{}});
+ if(formatVersion==2){
+  std::map<uint64_t,size_t> groupIndex;
+  for(const auto&hit:hits){
+   const uint32_t group=metadataRow(hit.track)[6];
+   const uint64_t identity=group?uint64_t(group):(uint64_t(1)<<32)|hit.track;
+   auto found=groupIndex.find(identity);
+   if(found!=groupIndex.end()){groups[found->second].members.push_back(hit);continue;}
+   if(groups.size()>=16)continue;
+   Group g{hit,{hit},{},{}};
+   if(group){const uint64_t first=uint64_t(group)<<32;
+    for(auto it=std::lower_bound(groupMembers.begin(),groupMembers.end(),first);it!=groupMembers.end()&&uint32_t(*it>>32)==group;it++)g.metadataTracks.push_back(uint32_t(*it));
+   }else g.metadataTracks.push_back(hit.track);
+   groupIndex.emplace(identity,groups.size());groups.push_back(std::move(g));
+  }
+ }else{
+  for(size_t i=0;i<std::min<size_t>(64,hits.size());i++){
+   const auto&hit=hits[i];bool joined=false;
+   for(auto&g:groups){auto evidence=duplicate(g.anchor,hit);if(evidence.matched){g.members.push_back(hit);g.evidence.push_back(evidence);g.metadataTracks.push_back(hit.track);joined=true;break;}}
+   if(!joined&&groups.size()<16)groups.push_back({hit,{hit},{},{hit.track}});
+  }
  }
  const auto groupingEnd=std::chrono::steady_clock::now();
- std::ostringstream out;out<<"{\"matcher\":\"pq8-sequence-reconstruction\",\"calibrated\":false,\"candidates\":[";
+ std::ostringstream out;out<<"{\"catalogFormat\":"<<formatVersion<<",\"matcher\":\"pq8-sequence-reconstruction\",\"calibrated\":false,\"candidates\":[";
  for(size_t index=0;index<std::min<size_t>(5,groups.size());index++){
-  const auto&g=groups[index];const auto&h=g.anchor;auto*m=metadata+h.track*6;
+  const auto&g=groups[index];const auto&h=g.anchor;auto*m=metadataRow(h.track);
   std::string orch=text(m[2]);if(orch.empty())orch=text(m[5]);
   std::set<std::string> sourceIds;std::array<std::set<std::string>,4> alternatives;
-  for(auto&member:g.members){auto*mm=metadata+member.track*6;sourceIds.insert(text(mm[0]));std::string orchestra=text(mm[2]);if(orchestra.empty())orchestra=text(mm[5]);if(!orchestra.empty())alternatives[0].insert(orchestra);if(mm[1])alternatives[1].insert(text(mm[1]));if(mm[3])alternatives[2].insert(text(mm[3]));if(mm[4])alternatives[3].insert(text(mm[4]));}
+  for(auto track:g.metadataTracks){auto*mm=metadataRow(track);sourceIds.insert(text(mm[0]));std::string orchestra=text(mm[2]);if(orchestra.empty())orchestra=text(mm[5]);if(!orchestra.empty())alternatives[0].insert(orchestra);if(mm[1])alternatives[1].insert(text(mm[1]));if(mm[3])alternatives[2].insert(text(mm[3]));if(mm[4])alternatives[3].insert(text(mm[4]));}
   if(index)out<<',';
   out<<"{\"id\":"<<quote(text(m[0]))<<",\"title\":"<<quote(text(m[1]))<<",\"orchestra\":"<<quote(orch)<<",\"singer\":"<<quote(text(m[3]))<<",\"year\":"<<quote(text(m[4]))<<",\"score\":"<<h.score<<",\"confidence\":"<<std::clamp(h.score,0.f,1.f)<<",\"referenceSeconds\":"<<(h.start-bounds[h.track])*.5<<",\"speed\":"<<h.speed<<",\"groupId\":"<<quote("acoustic:"+*sourceIds.begin())<<",\"groupSize\":"<<sourceIds.size()<<",\"sourceIds\":[";
   int item=0;for(auto&id:sourceIds){if(item++)out<<',';out<<quote(id);}out<<"],\"metadataAlternatives\":{";
   const char*names[]={"orchestra","title","singer","year"};for(int field=0;field<4;field++){if(field)out<<',';out<<quote(names[field])<<":[";item=0;for(auto&value:alternatives[field]){if(item++)out<<',';out<<quote(value);}out<<']';}
-  out<<"},\"sourceMetadata\":[";for(size_t j=0;j<g.members.size();j++){if(j)out<<',';const auto&member=g.members[j];auto*mm=metadata+member.track*6;std::string orchestra=text(mm[2]);if(orchestra.empty())orchestra=text(mm[5]);out<<"{\"id\":"<<quote(text(mm[0]))<<",\"title\":"<<quote(text(mm[1]))<<",\"orchestra\":"<<quote(orchestra)<<",\"singer\":"<<quote(text(mm[3]))<<",\"year\":"<<quote(text(mm[4]))<<",\"score\":"<<member.score<<'}';}
-  out<<"],\"groupingEvidence\":{\"method\":\"reference_pq_cosine_v1\",\"pairs\":[";
-  for(size_t j=0;j<g.evidence.size();j++){if(j)out<<',';const auto&v=g.evidence[j];out<<"{\"anchorId\":"<<quote(text(m[0]))<<",\"sourceId\":"<<quote(text(metadata[g.members[j+1].track*6]))<<",\"meanCosine\":"<<v.mean<<",\"p10Cosine\":"<<v.p10<<",\"overlapSeconds\":"<<v.overlapSeconds<<",\"samples\":"<<v.samples<<'}';}out<<"]}}";
+  out<<"},\"sourceMetadata\":[";for(size_t j=0;j<g.metadataTracks.size();j++){if(j)out<<',';const auto track=g.metadataTracks[j];auto*mm=metadataRow(track);std::string orchestra=text(mm[2]);if(orchestra.empty())orchestra=text(mm[5]);out<<"{\"id\":"<<quote(text(mm[0]))<<",\"title\":"<<quote(text(mm[1]))<<",\"orchestra\":"<<quote(orchestra)<<",\"singer\":"<<quote(text(mm[3]))<<",\"year\":"<<quote(text(mm[4]))<<",\"scored\":"<<(best.count(track)?"true":"false")<<",\"score\":";if(best.count(track))out<<best.at(track).score;else out<<"null";out<<'}';}
+  out<<"],\"groupingEvidence\":{\"method\":"<<quote(formatVersion==2?"catalog_duplicate_group_v2":"reference_pq_cosine_v1")<<",\"pairs\":[";
+  for(size_t j=0;j<g.evidence.size();j++){if(j)out<<',';const auto&v=g.evidence[j];out<<"{\"anchorId\":"<<quote(text(m[0]))<<",\"sourceId\":"<<quote(text(metadataRow(g.members[j+1].track)[0]))<<",\"meanCosine\":"<<v.mean<<",\"p10Cosine\":"<<v.p10<<",\"overlapSeconds\":"<<v.overlapSeconds<<",\"samples\":"<<v.samples<<'}';}out<<"]}}";
  }
- out<<"],\"rawCandidates\":[";for(size_t i=0;i<std::min<size_t>(20,hits.size());i++){if(i)out<<',';auto&h=hits[i];out<<"{\"id\":"<<quote(text(metadata[h.track*6]))<<",\"score\":"<<h.score<<",\"speed\":"<<h.speed<<",\"referenceSeconds\":"<<(h.start-bounds[h.track])*.5<<'}';}timespec cpuEnd{};clock_gettime(CLOCK_THREAD_CPUTIME_ID,&cpuEnd);out<<"],\"groupingMs\":"<<std::chrono::duration<double,std::milli>(groupingEnd-groupingBegin).count()<<",\"lookupMs\":"<<std::chrono::duration<double,std::milli>(lookupEnd-lookupBegin).count()<<",\"cpuMs\":"<<((cpuEnd.tv_sec-cpuBegin.tv_sec)*1000.+(cpuEnd.tv_nsec-cpuBegin.tv_nsec)/1e6)<<",\"elapsedMs\":"<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-began).count()<<",\"frames\":"<<frames.size()<<'}';return out.str();
+ out<<"],\"rawCandidates\":[";for(size_t i=0;i<std::min<size_t>(20,hits.size());i++){if(i)out<<',';auto&h=hits[i];out<<"{\"id\":"<<quote(text(metadataRow(h.track)[0]))<<",\"score\":"<<h.score<<",\"speed\":"<<h.speed<<",\"referenceSeconds\":"<<(h.start-bounds[h.track])*.5<<'}';}timespec cpuEnd{};clock_gettime(CLOCK_THREAD_CPUTIME_ID,&cpuEnd);out<<"],\"groupingMs\":"<<std::chrono::duration<double,std::milli>(groupingEnd-groupingBegin).count()<<",\"lookupMs\":"<<std::chrono::duration<double,std::milli>(lookupEnd-lookupBegin).count()<<",\"cpuMs\":"<<((cpuEnd.tv_sec-cpuBegin.tv_sec)*1000.+(cpuEnd.tv_nsec-cpuBegin.tv_nsec)/1e6)<<",\"elapsedMs\":"<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-began).count()<<",\"frames\":"<<frames.size()<<'}';return out.str();
 }
 double Engine::recent(int count)const {
  if(count<1||count>60)throw std::runtime_error("Invalid recent window count");

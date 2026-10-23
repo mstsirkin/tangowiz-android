@@ -1,0 +1,15 @@
+package org.tangowiz.app
+import android.app.Instrumentation
+import android.os.Bundle
+import org.json.JSONObject
+import java.io.*
+/** Import an externally produced, canonical V2 archive through the unchanged verified installer. */
+object ResourceUpgradeValidation{
+ fun run(i:Instrumentation,args:Bundle){var pinned:BundleSnapshot?=null;var manager:ResourceStore?=null;val report=JSONObject()
+  try{val ctx=i.targetContext;val old=ResourceStore(ctx).current()?:error("Missing existing V1 data");check(old.formatVersion==1);val manifest=JSONObject(File(args.getString("manifest","/data/local/tmp/resources-v2-manifest.json")).readText());check(manifest.getInt("formatVersion")==2);val archive=File(args.getString("archive","/data/local/tmp/resources-v2.zip"));check(archive.length()==manifest.getJSONObject("archive").getLong("bytes"))
+   val transport=ResourceTransport{url,headers->if(url==RESOURCE_MANIFEST_URL)RemoteResponse(200,emptyMap(),manifest.toString().byteInputStream()) else{val match=Regex("bytes=(\\d+)-(\\d*)").matchEntire(headers.getValue("Range"))!!;val start=match.groupValues[1].toLong();val end=match.groupValues[2].toLongOrNull()?:archive.length()-1;val file=RandomAccessFile(archive,"r");file.seek(start);val stream=object:InputStream(){var remaining=end-start+1;override fun read():Int{if(remaining==0L)return -1;val n=file.read();if(n>=0)remaining--;return n};override fun read(b:ByteArray,o:Int,l:Int):Int{if(remaining==0L)return -1;val n=file.read(b,o,minOf(l.toLong(),remaining).toInt());if(n>0)remaining-=n;return n};override fun close(){file.close()}};RemoteResponse(206,mapOf("Content-Range" to "bytes $start-$end/${archive.length()}"),stream)}}
+   manager=ResourceStore(ctx,transport,progress={s->if(s.kind in setOf("checking","downloading","verifying"))check(manager?.current()?.archiveHash==old.archiveHash){"Old data changed before verification finished"}});pinned=manager!!.pinCurrent();val began=System.currentTimeMillis();manager!!.check(true);val current=manager!!.current()!!;check(current.formatVersion==2&&current.archiveHash==manifest.getJSONObject("archive").getString("sha256"));manager!!.cleanupUnused();check(old.directory.exists());ResourcePins.release(pinned!!);pinned=null;manager!!.cleanupUnused();check(!old.directory.exists())
+   report.put("status","passed").put("old_format",1).put("new_format",2).put("elapsed_ms",System.currentTimeMillis()-began).put("bundle_version",current.version).put("archive_sha256",current.archiveHash).put("old_data_kept_until_verified_activation",true).put("native_catalog_and_model_validation",true).put("old_snapshot_kept_until_pin_release",true);File(ctx.filesDir,"resource-upgrade-validation.json").writeText(report.toString(2));i.finish(0,Bundle().apply{putString("summary",report.toString())})
+  }catch(e:Throwable){pinned?.let{ResourcePins.release(it)};report.put("status","failed").put("error",e.stackTraceToString());File(i.targetContext.filesDir,"resource-upgrade-validation.json").writeText(report.toString(2));i.finish(1,Bundle().apply{putString("error",e.stackTraceToString())})}
+ }
+}
