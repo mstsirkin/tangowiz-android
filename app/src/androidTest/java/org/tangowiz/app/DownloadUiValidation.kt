@@ -9,12 +9,12 @@ import java.util.Locale
 
 /** Exercises the actual visible Activity listener, rather than only downloader callbacks. */
 object DownloadUiValidation {
- fun run(i:Instrumentation){val ctx=i.targetContext;val resources=ResourceStore(ctx);val active=File(resources.root,"active.json");val hidden=File(resources.root,"ui-test-active.json");val offer=File(resources.root,"offer.json");val hiddenOffer=File(resources.root,"ui-test-offer.json");var activity:MainActivity?=null;val rows=JSONArray();val prefs=ctx.getSharedPreferences("settings",0);val auto=resources.automaticChecks;val originalLocale=Locale.getDefault()
+ fun run(i:Instrumentation){val ctx=i.targetContext;val resources=ResourceStore(ctx);val active=File(resources.root,"active.json");val hidden=File(resources.root,"ui-test-active.json");val offer=File(resources.root,"offer.json");val hiddenOffer=File(resources.root,"ui-test-offer.json");var activity:SetupActivity?=null;val rows=JSONArray();val prefs=ctx.getSharedPreferences("settings",0);val auto=resources.automaticChecks;val originalLocale=Locale.getDefault()
   try{
    check(!hidden.exists()){"Prior UI test backup needs recovery"};if(active.exists())check(active.renameTo(hidden));if(offer.exists())check(offer.renameTo(hiddenOffer));resources.automaticChecks=false;ResourceProgress.publish(ResourceState())
-   activity=i.startActivitySync(Intent(ctx,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
+   activity=i.startActivitySync(Intent(ctx,SetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as SetupActivity
    val deadline=SystemClock.elapsedRealtime()+45000;while(ResourceProgress.current.kind!="available"){check(SystemClock.elapsedRealtime()<deadline){"Fresh bootstrap failed: ${ResourceProgress.current}"};SystemClock.sleep(100)}
-   i.waitForIdleSync();val line=MainActivity::class.java.getDeclaredField("resourceLine").apply{isAccessible=true}.get(activity) as TextView;val button=MainActivity::class.java.getDeclaredField("resourceButton").apply{isAccessible=true}.get(activity) as Button
+   i.waitForIdleSync();val line=SetupActivity::class.java.getDeclaredField("resourceLine").apply{isAccessible=true}.get(activity) as TextView;val button=SetupActivity::class.java.getDeclaredField("resourceButton").apply{isAccessible=true}.get(activity) as Button
    i.runOnMainSync{check(activity!!.window.decorView.isShown);check(line.text.toString().startsWith("Download ")&&line.text.toString().contains("GB"));check(button.isShown&&button.isEnabled)}
    val total=1219075307L
    for(locale in listOf(Locale.US,Locale.forLanguageTag("he-IL"))){Locale.setDefault(locale);for(kind in listOf("downloading","verifying"))for(percent in listOf(0,37,100)){

@@ -11,8 +11,10 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 class RecognitionInstrumentation:Instrumentation(){
  private var arguments=Bundle()
+ override fun callActivityOnCreate(activity:android.app.Activity,state:Bundle?){super.callActivityOnCreate(activity,state);SetupProbe.created.add(activity)}
+ override fun callActivityOnResume(activity:android.app.Activity){super.callActivityOnResume(activity);SetupProbe.resumed=activity}
  override fun onCreate(args:Bundle?){super.onCreate(args);arguments=args?:Bundle();start()}
- override fun onStart(){if(arguments.getString("mode")=="download_ui"){DownloadUiValidation.run(this);return};if(arguments.getString("mode")=="updates"){UpdatePreferenceValidation.run(this);return};if(arguments.getString("mode")=="bootstrap"){BootstrapValidation.run(this);return};if(arguments.getString("mode")=="resources"){ResourceValidation.run(this);return};if(arguments.getString("mode")=="resident"){ResidentValidation.run(this);return};val report=JSONObject();var handle=0L
+ override fun onStart(){if(arguments.getString("mode")=="setup_prepare"){SetupResumeValidation.run(this,true);return};if(arguments.getString("mode")=="setup_resume"){SetupResumeValidation.run(this,false);return};if(arguments.getString("mode")=="setup"){SetupFlowValidation.run(this);return};if(arguments.getString("mode")=="download_ui"){DownloadUiValidation.run(this);return};if(arguments.getString("mode")=="updates"){UpdatePreferenceValidation.run(this);return};if(arguments.getString("mode")=="bootstrap"){BootstrapValidation.run(this);return};if(arguments.getString("mode")=="resources"){ResourceValidation.run(this);return};if(arguments.getString("mode")=="resident"){ResidentValidation.run(this);return};val report=JSONObject();var handle=0L
  try{
   check(!SignalGate.audible(FloatArray(8000))){"Silence gate failed"};check(!SignalGate.audible(FloatArray(8000){if(it%2==0)1f/32768 else -1f/32768})){"Near-silence gate failed"}
   val ctx=targetContext;val began=SystemClock.elapsedRealtimeNanos()
