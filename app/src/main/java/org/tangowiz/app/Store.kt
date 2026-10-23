@@ -7,7 +7,6 @@ import java.io.File
 import java.time.Instant
 import java.util.concurrent.CopyOnWriteArrayList
 
-data class Candidate(val id:String, val orchestra:String, val title:String, val singer:String="", val year:String="", val score:Double=0.0, val confidence:Int=0,val speed:Double=1.0)
 data class RecognitionState(val listening:Boolean=false,val phase:String="",val best:Candidate?=null,val second:Candidate?=null,val seconds:Double=0.0,val error:String="",val resident:Boolean=false,val exited:Boolean=false)
 object LiveState {
  @Volatile var current=RecognitionState()
@@ -23,8 +22,8 @@ class Store(val context:Context) {
  var timing:Boolean get()=prefs.getBoolean("timing",false); set(v){prefs.edit().putBoolean("timing",v).apply()}
  @Synchronized fun append(file:File,json:JSONObject){file.appendText(json.toString()+"\n")}
  fun history():List<JSONObject> = if(!history.exists()) emptyList() else java.io.RandomAccessFile(history,"r").use{f->val start=(f.length()-512000).coerceAtLeast(0);f.seek(start);val bytes=ByteArray((f.length()-start).toInt());f.readFully(bytes);bytes.toString(Charsets.UTF_8).lineSequence().mapNotNull{runCatching{JSONObject(it)}.getOrNull()}.toList().takeLast(1000)}
- fun result(c:Candidate,second:Candidate?, seconds:Double,session:String){
-  append(history,JSONObject().put("time",Instant.now().toString()).put("session",session).put("audio_seconds",seconds).put("id",c.id).put("orchestra",c.orchestra).put("title",c.title).put("singer",c.singer).put("year",c.year).put("score",c.score).put("confidence_score",c.confidence).put("speed",c.speed).put("state",if(c.confidence>=70) "strong" else "tentative").put("runner_up",second?.id ?: ""));LiveState.historyVersion.incrementAndGet()
+ fun result(c:Candidate,second:Candidate?, seconds:Double,session:String,rawResult:JSONObject?=null){
+  append(history,JSONObject().put("time",Instant.now().toString()).put("session",session).put("audio_seconds",seconds).put("id",c.id).put("groupId",c.groupId).put("sourceIds",JSONArray(c.aliases.sorted())).put("metadataAlternatives",c.alternativesJson()).put("orchestra",c.orchestra).put("title",c.title).put("singer",c.singer).put("year",c.year).put("score",c.score).put("confidence_score",c.confidence).put("speed",c.speed).put("state",if(c.confidence>=70) "strong" else "tentative").put("runner_up",second?.id ?: "").put("runner_up_group",second?.groupId?:""));if(rawResult!=null){val dir=File(root,session).apply{mkdirs()};append(File(dir,"matches.jsonl"),JSONObject().put("time",Instant.now().toString()).put("audio_seconds",seconds).put("result",rawResult))};LiveState.historyVersion.incrementAndGet()
  }
  fun export():File {
   val out=File(context.cacheDir,"tangowiz-debug-${System.currentTimeMillis()}.zip")

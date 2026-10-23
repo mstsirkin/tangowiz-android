@@ -1,0 +1,48 @@
+package org.tangowiz.app
+
+import org.json.JSONArray
+import org.json.JSONObject
+
+/** A native recording group; source IDs and unmodified metadata remain available for diagnostics. */
+data class Candidate(val id:String,val orchestra:String,val title:String,val singer:String="",val year:String="",val score:Double=0.0,val confidence:Int=0,val speed:Double=1.0,val groupId:String=id,val sourceIds:List<String> =listOf(id),val metadataAlternatives:Map<String,List<String>> =emptyMap(),val rawJson:String=""){
+ val aliases: Set<String> get()=(sourceIds+id).filter{it.isNotBlank()}.toSet()
+ fun sameRecording(other:Candidate)=groupId.isNotBlank()&&groupId==other.groupId||aliases.intersect(other.aliases).isNotEmpty()
+ fun labels(field:String):List<String>{val scalar=when(field){"orchestra"->orchestra;"title"->title;"singer"->singer;"year"->year;else->""};return (metadataAlternatives[field].orEmpty()+scalar).map{it.trim()}.filter{it.isNotEmpty()}.distinct()}
+ fun display(field:String):String{val values=MetadataLabels.resolve(this,field);return values.joinToString(" / ")+(if(values.size>1)" ?" else "")}
+ fun alternativesJson()=JSONObject().also{j->for(field in MetadataLabels.fields)j.put(field,JSONArray(labels(field)))}
+ companion object{
+  fun fromJson(j:JSONObject):Candidate{
+   val alternatives=j.optJSONObject("metadataAlternatives")?:j.optJSONObject("metadata_alternatives")
+   val options=MetadataLabels.fields.filter{alternatives?.has(it)==true}.associateWith{field->val a=alternatives?.optJSONArray(field);if(a==null)emptyList() else (0 until a.length()).map{a.optString(it)}.filter{it.isNotBlank()}}
+   val ids=j.optJSONArray("sourceIds")?:j.optJSONArray("source_ids");val id=j.optString("id");val sources=if(ids==null)listOf(id) else (0 until ids.length()).map{ids.optString(it)}.filter{it.isNotBlank()}
+   val score=j.optDouble("score",0.0);val confidence=if(j.has("confidence_score"))j.optInt("confidence_score") else (j.optDouble("confidence",score)*100).toInt()
+   return Candidate(id,j.optString("orchestra"),j.optString("title"),j.optString("singer"),j.optString("year"),score,confidence.coerceIn(0,100),j.optDouble("speed",1.0),j.optString("groupId",j.optString("group_id",id)).ifBlank{id},sources,options,j.toString())
+  }
+  fun distinctRunner(best:Candidate?,candidates:List<Candidate>)=if(best==null)null else candidates.filter{!best.sameRecording(it)}.maxByOrNull{it.score}
+ }
+}
+object MetadataLabels{
+ val fields=listOf("orchestra","title","singer","year")
+ private fun folded(value:String)=java.text.Normalizer.normalize(value,java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}+"),"").lowercase(java.util.Locale.ROOT).replace(Regex("[^\\p{L}\\p{N}]+")," ").trim()
+ private fun quality(value:String)=value.count{it.code>127}*4+(if(value.any{it.isLowerCase()}&&value.any{it.isUpperCase()})2 else 0)
+ private fun equivalent(values:List<String>,field:String):List<String>{val choices=linkedMapOf<String,String>();for(v in values){val key=if(field=="orchestra")folded(v).replace(Regex("^(?:orquesta(?: tipica)?|orq(?: tipica)?) +"),"") else folded(v);val old=choices[key];if(old==null||quality(v)>quality(old))choices[key]=v};return choices.values.toList()}
+ fun resolve(candidate:Candidate,field:String):List<String>{var values=candidate.labels(field)
+  if(field=="year")return preciseDates(values)
+  if(field=="title"){
+   val creditWords=(candidate.labels("orchestra")+candidate.labels("singer")).flatMap{folded(it).split(' ')}.filter{it.isNotBlank()}.toSet()
+   values=values.map{title->val parts=Regex("^(.+?)\\s+[-–—|]\\s+(.+)$").matchEntire(title);if(parts==null)title else{val base=parts.groupValues[1];val suffix=folded(parts.groupValues[2]).split(' ').filter{it.isNotBlank()};val corroborated=values.firstOrNull{folded(it)==folded(base)};if(corroborated!=null&&suffix.isNotEmpty()&&suffix.all{it in creditWords}&&suffix.any{it !in setOf("orquesta","tipica","orq","con","canta","y")})corroborated else title}}
+  }
+  return equivalent(values,field)
+ }
+ private data class DateLabel(val text:String,val from:java.time.LocalDate,val to:java.time.LocalDate)
+ private fun dateLabel(value:String):DateLabel?=runCatching{
+  val year=Regex("\\d{4}");val iso=Regex("(\\d{4})-(\\d{2})-(\\d{2})");val legacy=Regex("(\\d{1,2})[-/.](\\d{1,2})[-/.](\\d{4})");val range=Regex("(\\d{4})\\s*[-–—/]\\s*(\\d{4})")
+  when{year.matches(value)->{val y=value.toInt();DateLabel(value,java.time.LocalDate.of(y,1,1),java.time.LocalDate.of(y,12,31))};iso.matches(value)->{val d=java.time.LocalDate.parse(value);DateLabel(d.toString(),d,d)};legacy.matches(value)->{val p=legacy.matchEntire(value)!!.groupValues;val d=java.time.LocalDate.of(p[3].toInt(),p[2].toInt(),p[1].toInt());DateLabel(d.toString(),d,d)};range.matches(value)->{val p=range.matchEntire(value)!!.groupValues;val first=p[1].toInt();val last=p[2].toInt();require(first<=last);DateLabel("$first–$last",java.time.LocalDate.of(first,1,1),java.time.LocalDate.of(last,12,31))};else->null}
+ }.getOrNull()
+ /** Keep the most precise compatible claim; genuine differing dates remain alternatives. */
+ fun preciseDates(values:List<String>):List<String>{val parsed=values.map{it to dateLabel(it)};return parsed.filter{(_,v)->v==null||parsed.none{(_,other)->other!=null&&other.from>=v.from&&other.to<=v.to&&(other.from>v.from||other.to<v.to)}}.map{(raw,v)->v?.text?:raw}.distinct()}
+}
+object RecordingHistory{
+ fun consecutive(rows:List<JSONObject>):List<JSONObject>{val grouped=mutableListOf<JSONObject>();for(row in rows){val previous=grouped.lastOrNull();if(previous!=null&&previous.optString("session")==row.optString("session")&&Candidate.fromJson(previous).sameRecording(Candidate.fromJson(row))){grouped[grouped.lastIndex]=merge(previous,row)}else grouped.add(JSONObject(row.toString()))};return grouped}
+ private fun merge(old:JSONObject,new:JSONObject):JSONObject{val a=Candidate.fromJson(old);val b=Candidate.fromJson(new);return JSONObject(new.toString()).put("groupId",a.groupId).put("sourceIds",JSONArray((a.aliases+b.aliases).sorted())).put("metadataAlternatives",JSONObject().also{j->for(field in MetadataLabels.fields){val authoritative=b.metadataAlternatives.containsKey(field)&&b.aliases.containsAll(a.aliases)&&b.labels(field).isNotEmpty();j.put(field,JSONArray(if(authoritative)b.labels(field) else (a.labels(field)+b.labels(field)).distinct()))}}).put("time",old.optString("time",new.optString("time"))).put("last_time",new.optString("time"))}
+}

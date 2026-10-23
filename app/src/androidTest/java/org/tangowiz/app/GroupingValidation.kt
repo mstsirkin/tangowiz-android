@@ -1,0 +1,30 @@
+package org.tangowiz.app
+import android.app.Instrumentation
+import android.content.ContextWrapper
+import android.content.Intent
+import android.os.Bundle
+import android.widget.*
+import org.json.*
+import java.io.File
+object GroupingValidation {
+ fun run(i:Instrumentation){val checks=JSONArray();var activity:MainActivity?=null
+  try{
+   fun candidate(id:String,sources:List<String>,orchestra:String="",title:String="TU",singer:String="",year:String="",alternatives:JSONObject=JSONObject())=Candidate.fromJson(JSONObject().put("id",id).put("groupId","acoustic:$id").put("sourceIds",JSONArray(sources)).put("orchestra",orchestra).put("title",title).put("singer",singer).put("year",year).put("score",.9).put("metadataAlternatives",alternatives))
+   val alternatives=JSONObject().put("orchestra",JSONArray(listOf("Miguel Caló","Orquesta Miguel Caló","MIGUEL CALO"))).put("title",JSONArray(listOf("TU","TU - CALO RAUL BERON"))).put("singer",JSONArray(listOf("Raúl Berón","RAUL BERON"))).put("year",JSONArray(listOf("1949","1949-07-20","20-7-1949")))
+   val tu=candidate("a",listOf("a","b"),"MIGUEL CALO","TU - CALO RAUL BERON",year="1949",alternatives=alternatives)
+   check(tu.display("title")=="TU");check(tu.display("singer")=="Raúl Berón");check(tu.display("year")=="1949-07-20");check(!tu.display("orchestra").contains('?'));checks.put("complementary credits, generic artist suffix, accents/prefix and date precision resolve without false question marks")
+   val conflict=candidate("a",listOf("a","b"),alternatives=JSONObject().put("orchestra",JSONArray(listOf("Miguel Caló","Francisco Canaro"))).put("year",JSONArray(listOf("1949-07-20","1950-01-01"))))
+   check(conflict.display("orchestra").contains("?")&&conflict.display("orchestra").contains(" / "));check(conflict.display("year").contains("?"));check(MetadataLabels.preciseDates(listOf("1945–1950","1949","1949-07-20"))==listOf("1949-07-20"));checks.put("genuine conflicting orchestras and dates remain multiple uncertain labels")
+   val modern=candidate("a",listOf("a"),alternatives=JSONObject().put("orchestra",JSONArray(listOf("Orquesta Juan D’Arienzo","La Juan D’Arienzo"))));check(modern.display("orchestra").contains('?'));checks.put("modern La orchestra names remain distinct")
+   val alias=candidate("b",listOf("b","c"));val other=candidate("x",listOf("x"),title="TU");check(tu.sameRecording(alias)&&!tu.sameRecording(other));check(Candidate.distinctRunner(tu,listOf(alias,other))?.id=="x");checks.put("source intersections preserve group identity and runner-up excludes alias copies, not equal titles")
+   fun row(c:Candidate,session:String,time:String)=JSONObject().put("id",c.id).put("groupId",c.groupId).put("sourceIds",JSONArray(c.sourceIds)).put("metadataAlternatives",c.alternativesJson()).put("orchestra",c.orchestra).put("title",c.title).put("singer",c.singer).put("year",c.year).put("session",session).put("time",time)
+   val old=JSONObject().put("id","a").put("orchestra","MIGUEL CALO").put("title","TU - CALO RAUL BERON").put("session","s").put("time","2026-01-01T00:00:00Z");val newest=row(tu,"s","2026-01-01T00:00:05Z");val oldBefore=old.toString();val grouped=RecordingHistory.consecutive(listOf(old,newest,row(alias,"s","2026-01-01T00:00:10Z")));check(grouped.size==1);val merged=Candidate.fromJson(grouped.single());check(merged.aliases.containsAll(listOf("a","b","c")));check(merged.display("title")=="TU");check(merged.display("singer")=="Raúl Berón");check(old.toString()==oldBefore);check(grouped.single().getString("time")==old.getString("time"));checks.put("legacy source rows merge by aliases with complementary metadata and original raw rows unchanged")
+   val repeats=RecordingHistory.consecutive(listOf(newest,row(other,"s","later"),newest,row(tu,"different-session","later")));check(repeats.size==4);checks.put("nonconsecutive repeats and separate sessions stay separate")
+   val ctx=object:ContextWrapper(i.targetContext){override fun getFilesDir()=File(super.getFilesDir(),"grouping-test").apply{mkdirs()}};File(ctx.filesDir,"logs").deleteRecursively();val store=Store(ctx);val raw=JSONObject().put("rawCandidates",JSONArray().put(JSONObject().put("id","a")).put(JSONObject().put("id","b")));store.result(tu,other,10.0,"session",raw);check(store.history().single().getString("groupId")==tu.groupId);check(File(store.root,"session/matches.jsonl").readText().contains("rawCandidates"));checks.put("append-only history retains source/group fields and separate full raw match logs")
+   activity=i.startActivitySync(Intent(i.targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity;i.runOnMainSync{LiveState.publish(RecognitionState(best=tu,second=conflict))};i.waitForIdleSync()
+   fun labels(view:android.view.View):List<String> =if(view is TextView)listOf(view.text.toString()) else if(view is android.view.ViewGroup)(0 until view.childCount).flatMap{labels(view.getChildAt(it))} else emptyList()
+   val text=labels(activity!!.window.decorView);check(text.any{it=="TU"});check(text.any{it.contains("Raúl Berón")&&it.contains("1949-07-20")});check(text.any{it.contains("Miguel Caló")&&it.contains("Francisco Canaro")&&it.contains('?')});checks.put("actual visible Main and runner-up display combined credits and uncertain conflicts")
+   i.runOnMainSync{activity!!.finishAndRemoveTask()};val report=JSONObject().put("status","passed").put("checks",checks).put("count",checks.length());File(i.targetContext.filesDir,"grouping-validation.json").writeText(report.toString(2));i.finish(0,Bundle().apply{putString("summary",report.toString())})
+  }catch(e:Throwable){runCatching{i.runOnMainSync{activity?.finishAndRemoveTask()}};File(i.targetContext.filesDir,"grouping-validation.json").writeText(JSONObject().put("status","failed").put("checks",checks).put("error",e.stackTraceToString()).toString(2));i.finish(1,Bundle().apply{putString("error",e.stackTraceToString())})}
+ }
+}

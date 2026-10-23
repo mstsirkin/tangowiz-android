@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <tuple>
+#include "reference_grouping.h"
 namespace tangowiz {
 struct Slice {uint64_t offset,size;};
 struct Frame {std::vector<float> vector;std::vector<int64_t> neighbors;};
@@ -15,7 +17,8 @@ class Engine {
  float latestOffset=-1;
  struct Ranked {float score;uint64_t track,start;float speed;};
  std::map<int,std::vector<Ranked>> ranked;
+ mutable std::map<std::tuple<uint64_t,uint64_t,int64_t>,DuplicateEvidence> duplicateCache;
  public: Engine(const uint8_t* base,uint64_t bytes); std::vector<int64_t> neighbors(const float*q,std::vector<float>*scores=nullptr);std::string search(const float*e,int count,float speed,float offset);double recent(int count)const;void reset(){streams.clear();totals.clear();ranked.clear();lastOffset.clear();latestOffset=-1;}
- private:float similarity(const float*q,uint64_t id)const;std::string text(uint32_t offset)const;
+ private:bool reconstruct(uint64_t id,float*out)const;DuplicateEvidence duplicate(const Ranked&a,const Ranked&b)const;float similarity(const float*q,uint64_t id)const;std::string text(uint32_t offset)const;
 };
 }

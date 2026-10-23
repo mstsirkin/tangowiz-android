@@ -14,7 +14,7 @@ class RecognitionInstrumentation:Instrumentation(){
  override fun callActivityOnCreate(activity:android.app.Activity,state:Bundle?){super.callActivityOnCreate(activity,state);SetupProbe.created.add(activity)}
  override fun callActivityOnResume(activity:android.app.Activity){super.callActivityOnResume(activity);SetupProbe.resumed=activity}
  override fun onCreate(args:Bundle?){super.onCreate(args);arguments=args?:Bundle();start()}
- override fun onStart(){if(arguments.getString("mode")=="setup_prepare"){SetupResumeValidation.run(this,true);return};if(arguments.getString("mode")=="setup_resume"){SetupResumeValidation.run(this,false);return};if(arguments.getString("mode")=="setup"){SetupFlowValidation.run(this);return};if(arguments.getString("mode")=="download_ui"){DownloadUiValidation.run(this);return};if(arguments.getString("mode")=="updates"){UpdatePreferenceValidation.run(this);return};if(arguments.getString("mode")=="bootstrap"){BootstrapValidation.run(this);return};if(arguments.getString("mode")=="resources"){ResourceValidation.run(this);return};if(arguments.getString("mode")=="resident"){ResidentValidation.run(this);return};val report=JSONObject();var handle=0L
+ override fun onStart(){if(arguments.getString("mode")=="grouping"){GroupingValidation.run(this);return};if(arguments.getString("mode")=="setup_prepare"){SetupResumeValidation.run(this,true);return};if(arguments.getString("mode")=="setup_resume"){SetupResumeValidation.run(this,false);return};if(arguments.getString("mode")=="setup"){SetupFlowValidation.run(this);return};if(arguments.getString("mode")=="download_ui"){DownloadUiValidation.run(this);return};if(arguments.getString("mode")=="updates"){UpdatePreferenceValidation.run(this);return};if(arguments.getString("mode")=="bootstrap"){BootstrapValidation.run(this);return};if(arguments.getString("mode")=="resources"){ResourceValidation.run(this);return};if(arguments.getString("mode")=="resident"){ResidentValidation.run(this);return};val report=JSONObject();var handle=0L
  try{
   check(!SignalGate.audible(FloatArray(8000))){"Silence gate failed"};check(!SignalGate.audible(FloatArray(8000){if(it%2==0)1f/32768 else -1f/32768})){"Near-silence gate failed"}
   val ctx=targetContext;val began=SystemClock.elapsedRealtimeNanos()
@@ -28,7 +28,7 @@ class RecognitionInstrumentation:Instrumentation(){
   val last=rows.getJSONObject(rows.length()-1).getJSONObject("result").getJSONArray("candidates").getJSONObject(0)
   check(last.getString("id")=="palazzo-f57cf688973fbd86315e1d87"){"Unexpected recording ${last.getString("id")}"}
   check(last.getString("orchestra")=="Ricardo Tanturi"){"Unexpected orchestra"}
-  Store(ctx).result(Candidate(last.getString("id"),last.getString("orchestra"),last.getString("title"),last.optString("singer"),last.optString("year"),last.getDouble("score"),(last.getDouble("confidence")*100).toInt()),null,10.0,"validation-event-95aHsFHdWY")
+  Store(ctx).result(Candidate.fromJson(last),null,10.0,"validation-event-95aHsFHdWY")
   report.put("history_entry_created",true).put("rows",rows).put("status","passed_execution");model.close();File(ctx.filesDir,"instrumentation.json").writeText(report.toString(2));finish(0,Bundle().apply{putString("report",report.toString())})
  }catch(e:Throwable){report.put("status","failed").put("error",e.stackTraceToString());File(targetContext.filesDir,"instrumentation.json").writeText(report.toString(2));finish(1,Bundle().apply{putString("error",e.stackTraceToString())})}finally{if(handle!=0L)NativeEngine.close(handle)}}
 }

@@ -131,7 +131,7 @@ class RecognitionService:Service(){
    if(!active(token))return
    NativeEngine.reset(native)
    val input=ByteBuffer.allocateDirect(256*33*4).order(ByteOrder.nativeOrder());val output=ByteBuffer.allocateDirect(128*4).order(ByteOrder.nativeOrder())
-   val pcmHistory=FloatArray(131072);var pcmSize=0;val nextFrame=IntArray(13);var baseSample=0L;var samples=0L;var lastLogged="";var logSecond=-60.0;var lastFallback=-30.0;var hadSignal=false
+   val pcmHistory=FloatArray(131072);var pcmSize=0;val nextFrame=IntArray(13);var baseSample=0L;var samples=0L;var lastLogged:Candidate?=null;var logSecond=-60.0;var lastFallback=-30.0;var hadSignal=false
    val fallbackResult=java.util.concurrent.atomic.AtomicReference<Pair<JSONObject,Long>?>(null)
    val signalGeneration=java.util.concurrent.atomic.AtomicLong(0)
    val fp=DataOutputStream(BufferedOutputStream(File(dir,"fingerprints.bin").outputStream()));fingerprintLog=fp
@@ -175,8 +175,8 @@ class RecognitionService:Service(){
     // Buffered fingerprint stream is flushed at session close.
     if(!active(token))break
     val arr=result?.optJSONArray("candidates")
-    fun candidate(i:Int):Candidate?{val obj=arr?.optJSONObject(i)?:return null;return Candidate(obj.optString("id"),obj.optString("orchestra"),obj.optString("title"),obj.optString("singer"),obj.optString("year"),obj.optDouble("score"),(obj.optDouble("confidence")*100).toInt().coerceIn(0,100),obj.optDouble("speed",1.0))}
-    var best=candidate(0);var second=candidate(1)
+    val candidates=if(arr==null)emptyList() else (0 until arr.length()).mapNotNull{arr.optJSONObject(it)?.let(Candidate::fromJson)}
+    var best=candidates.firstOrNull();var second=Candidate.distinctRunner(best,candidates);var selectedResult=result
     if(audibleWindow&&offset>10&&offset-lastFallback>=30&&(best?.score?:0.0)<.60&&pcmSize>=48000){
      lastFallback=offset;val fallbackGeneration=signalGeneration.get();val matchedBaseline=NativeEngine.recent(native,10);val snapshot=pcmHistory.copyOfRange(pcmSize-48000,pcmSize)
      fallbackWorker!!.start(snapshot,(samples-48000)/8000.0){r,t0->val variantScore=r.optJSONArray("candidates")?.optJSONObject(0)?.optDouble("score")?:0.0;r.put("matched_duration_baseline_score",matchedBaseline);val allowed=matchedBaseline.isFinite()&&variantScore>=matchedBaseline+.08&&signalGeneration.get()==fallbackGeneration&&active(token);r.put("matched_duration_guard",allowed).put("same_signal_generation",signalGeneration.get()==fallbackGeneration);if(allowed)fallbackResult.set(Pair(r,t0));io.execute{val row=JSONObject().put("stage","speed_fallback").put("elapsed_ms",(SystemClock.elapsedRealtimeNanos()-t0)/1e6).put("result",r);store.append(File(dir,"fallback.jsonl"),row);if(store.timing)store.append(timings,row)}}
@@ -184,9 +184,9 @@ class RecognitionService:Service(){
     val fallback=fallbackResult.get()
     if(audibleWindow&&fallback!=null&&(SystemClock.elapsedRealtimeNanos()-fallback.second)<15_000_000_000L){
      val f=fallback.first.optJSONArray("candidates")?.optJSONObject(0)
-     if(f!=null&&f.optDouble("score")>=.65&&f.optDouble("score")>(best?.score?:0.0)+.08){best=Candidate(f.optString("id"),f.optString("orchestra"),f.optString("title"),f.optString("singer"),f.optString("year"),f.optDouble("score"),(f.optDouble("confidence")*100).toInt().coerceIn(0,100),f.optDouble("speed",1.0));second=candidate(0)}
+     if(f!=null&&f.optDouble("score")>=.65&&f.optDouble("score")>(best?.score?:0.0)+.08){best=Candidate.fromJson(f);val fallbackCandidates=fallback.first.optJSONArray("candidates");val alternatives=if(fallbackCandidates==null)emptyList() else (0 until fallbackCandidates.length()).mapNotNull{fallbackCandidates.optJSONObject(it)?.let(Candidate::fromJson)};second=Candidate.distinctRunner(best,alternatives+candidates);selectedResult=fallback.first}
     }
-    if(best!=null&&(best.id!=lastLogged||offset-logSecond>=5)){val logged=best;io.execute{store.result(logged,second,offset+1,session)};lastLogged=best.id;logSecond=offset}
+    if(best!=null&&(lastLogged==null||!best.sameRecording(lastLogged!!)||offset-logSecond>=5)){val logged=best;val raw=selectedResult;io.execute{store.result(logged,second,offset+1,session,raw)};lastLogged=best;logSecond=offset}
     synchronized(stateLock){if(active(token))LiveState.publish(RecognitionState(listening=true,resident=true,phase="♪",best=best,second=second,seconds=offset+1))}
     timing("end_to_end",start,extra=JSONObject().put("audio_seconds",samples/8000.0).put("audio_to_result_lag_ms",(SystemClock.elapsedRealtimeNanos()-start)/1e6-samples/8.0).put("backlog_seconds",queue.size*.5).put("captured_seconds",captured.get()/8000.0))
    }

@@ -38,14 +38,62 @@ std::vector<int64_t> Engine::neighbors(const float*q,std::vector<float>*output){
 float Engine::similarity(const float*q,uint64_t id)const {
  if(id>=ntotal)return -1;uint64_t slot=reverse[id];if(slot>=nblocks*16)return -1;uint64_t block=slot/16,lane=slot%16;auto list=std::upper_bound(offsets,offsets+nlist+1,(int64_t)block)-offsets-1;float sum=0;for(int d=0;d<128;d++)sum+=q[d]*coarse[list*128+d];for(int j=0;j<64;j++){int code=codes[(block*64+j)*16+lane];sum+=q[j*2]*pq[(j*256+code)*2]+q[j*2+1]*pq[(j*256+code)*2+1];}return sum;
 }
+bool Engine::reconstruct(uint64_t id,float*out)const {
+ if(id>=ntotal)return false;
+ const uint64_t slot=reverse[id];if(slot>=nblocks*16)return false;
+ const uint64_t block=slot/16,lane=slot%16;
+ const auto list=std::upper_bound(offsets,offsets+nlist+1,int64_t(block))-offsets-1;
+ if(list<0||list>=int64_t(nlist))return false;
+ for(int j=0;j<64;j++){
+  const int code=codes[(block*64+j)*16+lane];
+  for(int d=0;d<2;d++){out[j*2+d]=coarse[list*128+j*2+d]+pq[(j*256+code)*2+d];if(!std::isfinite(out[j*2+d]))return false;}
+ }
+ return true;
+}
+DuplicateEvidence Engine::duplicate(const Ranked&a,const Ranked&b)const {
+ if(a.track>=nrefs||b.track>=nrefs||std::abs(a.speed-b.speed)>.0001f)return {};
+ const Ranked*first=&a,*second=&b;if(first->track>second->track)std::swap(first,second);
+ const int64_t delta=int64_t(second->start)-bounds[second->track]-(int64_t(first->start)-bounds[first->track]);
+ const auto key=std::make_tuple(first->track,second->track,delta);
+ auto found=duplicateCache.find(key);if(found!=duplicateCache.end())return found->second;
+ const uint64_t ai=first->track,bi=second->track;
+ auto evidence=verifyReferenceOverlap(bounds[ai+1]-bounds[ai],bounds[bi+1]-bounds[bi],delta,
+  [&](int which,int64_t frame,float*out){const uint64_t track=which?bi:ai;if(frame<0||frame>=bounds[track+1]-bounds[track])return false;return reconstruct(bounds[track]+frame,out);});
+ if(duplicateCache.size()>=2048)duplicateCache.clear();
+ duplicateCache.emplace(key,evidence);return evidence;
+}
 std::string Engine::search(const float*e,int count,float speed,float offset){
  timespec cpuBegin{};clock_gettime(CLOCK_THREAD_CPUTIME_ID,&cpuBegin);auto began=std::chrono::steady_clock::now();if(count<1||count>64||!std::isfinite(speed)||speed<.5||speed>2||!std::isfinite(offset))throw std::runtime_error("Invalid query batch");int key=std::lround(speed*10000);if(lastOffset.count(key)&&std::abs(offset-(lastOffset[key]+.5f*speed))>.1f){streams[key].clear();totals[key]=0;ranked.erase(key);}lastOffset[key]=offset+(count-1)*.5f*speed;latestOffset=std::max(latestOffset,lastOffset[key]);for(auto it=lastOffset.begin();it!=lastOffset.end();){if(latestOffset-it->second>30.f){streams.erase(it->first);ranked.erase(it->first);totals.erase(it->first);it=lastOffset.erase(it);}else ++it;}auto&frames=streams[key];auto lookupBegin=std::chrono::steady_clock::now();for(int i=0;i<count;i++){Frame f;f.vector.assign(e+i*128,e+(i+1)*128);f.neighbors=neighbors(f.vector.data());frames.push_back(std::move(f));totals[key]++;}auto lookupEnd=std::chrono::steady_clock::now();if(frames.size()>60)frames.erase(frames.begin(),frames.end()-60);
  using Hit=Ranked;std::map<uint64_t,Hit> best;
  for(auto&st:streams){if(st.first!=key)continue;auto&fs=st.second;int n=fs.size();std::set<int64_t> starts;for(int j=0;j<n;j++)for(auto id:fs[j].neighbors)if(id>=j&&id-j+n<=int64_t(ntotal))starts.insert(id-j);
  for(auto start:starts){uint64_t tr=std::upper_bound(bounds,bounds+nrefs+1,start)-bounds-1;if(tr>=nrefs||start+n>bounds[tr+1])continue;float score=0;for(int j=0;j<n;j++)score+=similarity(fs[j].vector.data(),start+j);score/=n;auto it=best.find(tr);if(it==best.end()||score>it->second.score)best[tr]={score,tr,(uint64_t)start,st.first/10000.f};}}
  auto&updated=ranked[key];updated.clear();for(auto&h:best)updated.push_back(h.second);best.clear();size_t maxFrames=0;for(auto&s:streams)maxFrames=std::max(maxFrames,s.second.size());for(auto&stream:ranked){if(streams[stream.first].size()*5<maxFrames*4||latestOffset-lastOffset[stream.first]>3.f)continue;for(auto&h:stream.second){auto it=best.find(h.track);if(it==best.end()||h.score>it->second.score)best[h.track]=h;}}std::vector<Hit> hits;for(auto&h:best)hits.push_back(h.second);std::sort(hits.begin(),hits.end(),[](const Hit&a,const Hit&b){return a.score!=b.score?a.score>b.score:a.track<b.track;});
- std::ostringstream out;out<<"{\"matcher\":\"pq8-sequence-reconstruction\",\"calibrated\":false,\"candidates\":[";std::set<std::tuple<std::string,std::string,std::string>> labels;int shown=0;for(auto&h:hits){auto*m=metadata+h.track*6;std::string orch=text(m[2]);if(orch.empty())orch=text(m[5]);std::string title=text(m[1]);if(!labels.emplace(orch,title,text(m[4])).second)continue;if(shown++)out<<',';float confidence=std::clamp(h.score,0.f,1.f);out<<"{\"id\":"<<quote(text(m[0]))<<",\"title\":"<<quote(title)<<",\"orchestra\":"<<quote(orch)<<",\"singer\":"<<quote(text(m[3]))<<",\"year\":"<<quote(text(m[4]))<<",\"score\":"<<h.score<<",\"confidence\":"<<confidence<<",\"referenceSeconds\":"<<(h.start-bounds[h.track])*.5<<",\"speed\":"<<h.speed<<'}';if(shown==5)break;}
- out<<"],\"rawCandidates\":[";for(size_t i=0;i<std::min<size_t>(20,hits.size());i++){if(i)out<<',';auto&h=hits[i];out<<"{\"id\":"<<quote(text(metadata[h.track*6]))<<",\"score\":"<<h.score<<",\"speed\":"<<h.speed<<",\"referenceSeconds\":"<<(h.start-bounds[h.track])*.5<<'}';}timespec cpuEnd{};clock_gettime(CLOCK_THREAD_CPUTIME_ID,&cpuEnd);out<<"],\"lookupMs\":"<<std::chrono::duration<double,std::milli>(lookupEnd-lookupBegin).count()<<",\"cpuMs\":"<<((cpuEnd.tv_sec-cpuBegin.tv_sec)*1000.+(cpuEnd.tv_nsec-cpuBegin.tv_nsec)/1e6)<<",\"elapsedMs\":"<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-began).count()<<",\"frames\":"<<frames.size()<<'}';return out.str();
+ // Group only direct, sustained reference fingerprint matches to the strongest
+ // anchor. Candidate ranking scores and database identities remain untouched.
+ auto groupingBegin=std::chrono::steady_clock::now();
+ struct Group {Hit anchor;std::vector<Hit> members;std::vector<DuplicateEvidence> evidence;};
+ std::vector<Group> groups;
+ for(size_t i=0;i<std::min<size_t>(64,hits.size());i++){
+  const auto&hit=hits[i];bool joined=false;
+  for(auto&g:groups){auto evidence=duplicate(g.anchor,hit);if(evidence.matched){g.members.push_back(hit);g.evidence.push_back(evidence);joined=true;break;}}
+  if(!joined&&groups.size()<16)groups.push_back({hit,{hit},{}});
+ }
+ const auto groupingEnd=std::chrono::steady_clock::now();
+ std::ostringstream out;out<<"{\"matcher\":\"pq8-sequence-reconstruction\",\"calibrated\":false,\"candidates\":[";
+ for(size_t index=0;index<std::min<size_t>(5,groups.size());index++){
+  const auto&g=groups[index];const auto&h=g.anchor;auto*m=metadata+h.track*6;
+  std::string orch=text(m[2]);if(orch.empty())orch=text(m[5]);
+  std::set<std::string> sourceIds;std::array<std::set<std::string>,4> alternatives;
+  for(auto&member:g.members){auto*mm=metadata+member.track*6;sourceIds.insert(text(mm[0]));std::string orchestra=text(mm[2]);if(orchestra.empty())orchestra=text(mm[5]);if(!orchestra.empty())alternatives[0].insert(orchestra);if(mm[1])alternatives[1].insert(text(mm[1]));if(mm[3])alternatives[2].insert(text(mm[3]));if(mm[4])alternatives[3].insert(text(mm[4]));}
+  if(index)out<<',';
+  out<<"{\"id\":"<<quote(text(m[0]))<<",\"title\":"<<quote(text(m[1]))<<",\"orchestra\":"<<quote(orch)<<",\"singer\":"<<quote(text(m[3]))<<",\"year\":"<<quote(text(m[4]))<<",\"score\":"<<h.score<<",\"confidence\":"<<std::clamp(h.score,0.f,1.f)<<",\"referenceSeconds\":"<<(h.start-bounds[h.track])*.5<<",\"speed\":"<<h.speed<<",\"groupId\":"<<quote("acoustic:"+*sourceIds.begin())<<",\"groupSize\":"<<sourceIds.size()<<",\"sourceIds\":[";
+  int item=0;for(auto&id:sourceIds){if(item++)out<<',';out<<quote(id);}out<<"],\"metadataAlternatives\":{";
+  const char*names[]={"orchestra","title","singer","year"};for(int field=0;field<4;field++){if(field)out<<',';out<<quote(names[field])<<":[";item=0;for(auto&value:alternatives[field]){if(item++)out<<',';out<<quote(value);}out<<']';}
+  out<<"},\"sourceMetadata\":[";for(size_t j=0;j<g.members.size();j++){if(j)out<<',';const auto&member=g.members[j];auto*mm=metadata+member.track*6;std::string orchestra=text(mm[2]);if(orchestra.empty())orchestra=text(mm[5]);out<<"{\"id\":"<<quote(text(mm[0]))<<",\"title\":"<<quote(text(mm[1]))<<",\"orchestra\":"<<quote(orchestra)<<",\"singer\":"<<quote(text(mm[3]))<<",\"year\":"<<quote(text(mm[4]))<<",\"score\":"<<member.score<<'}';}
+  out<<"],\"groupingEvidence\":{\"method\":\"reference_pq_cosine_v1\",\"pairs\":[";
+  for(size_t j=0;j<g.evidence.size();j++){if(j)out<<',';const auto&v=g.evidence[j];out<<"{\"anchorId\":"<<quote(text(m[0]))<<",\"sourceId\":"<<quote(text(metadata[g.members[j+1].track*6]))<<",\"meanCosine\":"<<v.mean<<",\"p10Cosine\":"<<v.p10<<",\"overlapSeconds\":"<<v.overlapSeconds<<",\"samples\":"<<v.samples<<'}';}out<<"]}}";
+ }
+ out<<"],\"rawCandidates\":[";for(size_t i=0;i<std::min<size_t>(20,hits.size());i++){if(i)out<<',';auto&h=hits[i];out<<"{\"id\":"<<quote(text(metadata[h.track*6]))<<",\"score\":"<<h.score<<",\"speed\":"<<h.speed<<",\"referenceSeconds\":"<<(h.start-bounds[h.track])*.5<<'}';}timespec cpuEnd{};clock_gettime(CLOCK_THREAD_CPUTIME_ID,&cpuEnd);out<<"],\"groupingMs\":"<<std::chrono::duration<double,std::milli>(groupingEnd-groupingBegin).count()<<",\"lookupMs\":"<<std::chrono::duration<double,std::milli>(lookupEnd-lookupBegin).count()<<",\"cpuMs\":"<<((cpuEnd.tv_sec-cpuBegin.tv_sec)*1000.+(cpuEnd.tv_nsec-cpuBegin.tv_nsec)/1e6)<<",\"elapsedMs\":"<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-began).count()<<",\"frames\":"<<frames.size()<<'}';return out.str();
 }
 double Engine::recent(int count)const {
  if(count<1||count>60)throw std::runtime_error("Invalid recent window count");
