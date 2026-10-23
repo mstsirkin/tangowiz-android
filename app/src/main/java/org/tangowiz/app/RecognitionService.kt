@@ -35,6 +35,8 @@ class RecognitionService:Service(){
  private val io=Executors.newSingleThreadExecutor()
  private lateinit var store:Store
  private var model:Interpreter?=null
+ private var bundle:BundleSnapshot?=null
+ @Volatile private var reloadPending=false
  private var native=0L
  private var modelLoads=0
  private var indexLoads=0
@@ -60,12 +62,14 @@ class RecognitionService:Service(){
   if(exiting)return START_NOT_STICKY
   when(intent?.action){
    EXIT->{requestExit();return START_NOT_STICKY}
+   "RELOAD"->{synchronized(stateLock){desired=false;generation++;reloadPending=true;stateLock.notifyAll()};stopCapture();releaseWake();LiveState.publish(RecognitionState(resident=true,phase="Ⅱ"));event("resource_reload_requested")}
    PAUSE,"STOP"->{
     synchronized(stateLock){desired=false;generation++;stateLock.notifyAll()}
     stopCapture();releaseWake();LiveState.publish(RecognitionState(resident=true,phase="Ⅱ"));event("pause_requested")
    }
    else->{
     if(exiting)return START_NOT_STICKY
+    if(ResourceStore(this).current()==null){LiveState.publish(RecognitionState(error="Download resources first"));stopSelf();return START_NOT_STICKY}
     synchronized(stateLock){if(!desired){desired=true;generation++};stateLock.notifyAll()}
     LiveState.publish(RecognitionState(listening=true,resident=true,phase="…"));event("resume_requested")
    }
@@ -90,13 +94,15 @@ class RecognitionService:Service(){
  private fun engineLoop(){
   try{
    while(true){
-    val token=synchronized(stateLock){while(!desired&&!exiting)stateLock.wait();if(exiting)null else generation}
+    val token=synchronized(stateLock){while(!desired&&!exiting&&!reloadPending)stateLock.wait();if(exiting)null else if(reloadPending){reloadPending=false;-1L}else generation}
     if(token==null)break
+    if(token==-1L){model?.close();model=null;if(native!=0L)NativeEngine.close(native);native=0L;bundle?.let{ResourcePins.release(it)};bundle=null;ResourceStore(this).cleanupUnused();event("resources_released");continue}
     runSession(token)
     synchronized(stateLock){if(!desired&&!exiting){LiveState.publish(LiveState.current.copy(listening=false,resident=true,phase="Ⅱ",best=null,second=null));event("pause_complete");refreshNotification()}}
    }
   }finally{
    stopCapture();releaseWake();model?.close();model=null;if(native!=0L)NativeEngine.close(native);native=0L
+   bundle?.let{ResourcePins.release(it)};bundle=null;ResourceStore(this).cleanupUnused()
    io.shutdown();runCatching{io.awaitTermination(10,java.util.concurrent.TimeUnit.SECONDS)}
    event("engine_closed");finishExit()
   }
@@ -118,10 +124,10 @@ class RecognitionService:Service(){
    event("capture_started");val captured=java.util.concurrent.atomic.AtomicLong(0)
    captureThread=Thread({android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);try{while(active(token)){val block=ShortArray(4000);var n=0;while(n<block.size&&active(token)){val got=ar.read(block,n,block.size-n,AudioRecord.READ_BLOCKING);if(got<0)throw IOException("Microphone error $got");n+=got};if(n==block.size){queue.put(block);captured.addAndGet(n.toLong())}}}catch(e:Exception){if(active(token)){synchronized(stateLock){if(active(token)){desired=false;generation++}};LiveState.publish(RecognitionState(resident=true,error=e.message?:"Audio capture failed"))}}},"tango-audio").apply{start()}
    var t=SystemClock.elapsedRealtimeNanos()
-   if(model==null){assets.openFd("nmfp.tflite").use{fd->FileInputStream(fd.fileDescriptor).channel.use{ch->val mapped=ch.map(java.nio.channels.FileChannel.MapMode.READ_ONLY,fd.startOffset,fd.declaredLength);model=Interpreter(mapped,Interpreter.Options().setNumThreads(2))}}
+   if(model==null){if(bundle==null)bundle=ResourceStore(this).pinCurrent()?:throw IOException("Download resources first");FileInputStream(bundle!!.model).channel.use{ch->model=Interpreter(ch.map(java.nio.channels.FileChannel.MapMode.READ_ONLY,0,ch.size()),Interpreter.Options().setNumThreads(2))}
    modelLoads++;event("model_loaded");timing("model_load",t)}
    if(exiting)return
-   if(native==0L){t=SystemClock.elapsedRealtimeNanos();native=NativeEngine.init(assets);check(native!=0L){"Index initialization failed"};indexLoads++;event("index_loaded");timing("index_load",t)}
+   if(native==0L){t=SystemClock.elapsedRealtimeNanos();native=NativeEngine.initFile(bundle!!.catalog.absolutePath);check(native!=0L){"Index initialization failed"};indexLoads++;event("index_loaded");timing("index_load",t)}
    if(!active(token))return
    NativeEngine.reset(native)
    val input=ByteBuffer.allocateDirect(256*33*4).order(ByteOrder.nativeOrder());val output=ByteBuffer.allocateDirect(128*4).order(ByteOrder.nativeOrder())
@@ -129,7 +135,7 @@ class RecognitionService:Service(){
    val fallbackResult=java.util.concurrent.atomic.AtomicReference<Pair<JSONObject,Long>?>(null)
    val signalGeneration=java.util.concurrent.atomic.AtomicLong(0)
    val fp=DataOutputStream(BufferedOutputStream(File(dir,"fingerprints.bin").outputStream()));fingerprintLog=fp
-   fallbackWorker=FallbackMatcher(assets){offset,speed,embedding->if(active(token))io.execute{if(active(token)){fp.writeDouble(offset.toDouble());fp.writeFloat(speed);embedding.forEach{fp.writeFloat(it)}}}}
+   fallbackWorker=FallbackMatcher(bundle!!){offset,speed,embedding->if(active(token))io.execute{if(active(token)){fp.writeDouble(offset.toDouble());fp.writeFloat(speed);embedding.forEach{fp.writeFloat(it)}}}}
    File(dir,"session.json").writeText(JSONObject().put("start",Instant.now().toString()).put("sample_rate",8000).put("fingerprint_format","big-endian: float64 query_offset_seconds, float32 speed, 128 float32 embedding; repeated records").put("confidence","Heuristic score, not calibrated probability").toString(2))
    while(active(token)){
     val block=queue.poll(1,java.util.concurrent.TimeUnit.SECONDS)?:continue

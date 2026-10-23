@@ -12,13 +12,13 @@ import java.nio.ByteOrder
 class RecognitionInstrumentation:Instrumentation(){
  private var arguments=Bundle()
  override fun onCreate(args:Bundle?){super.onCreate(args);arguments=args?:Bundle();start()}
- override fun onStart(){if(arguments.getString("mode")=="resident"){ResidentValidation.run(this);return};val report=JSONObject();var handle=0L
+ override fun onStart(){if(arguments.getString("mode")=="updates"){UpdatePreferenceValidation.run(this);return};if(arguments.getString("mode")=="bootstrap"){BootstrapValidation.run(this);return};if(arguments.getString("mode")=="resources"){ResourceValidation.run(this);return};if(arguments.getString("mode")=="resident"){ResidentValidation.run(this);return};val report=JSONObject();var handle=0L
  try{
   check(!SignalGate.audible(FloatArray(8000))){"Silence gate failed"};check(!SignalGate.audible(FloatArray(8000){if(it%2==0)1f/32768 else -1f/32768})){"Near-silence gate failed"}
   val ctx=targetContext;val began=SystemClock.elapsedRealtimeNanos()
-  val model=ctx.assets.openFd("nmfp.tflite").use{fd->FileInputStream(fd.fileDescriptor).channel.use{ch->Interpreter(ch.map(java.nio.channels.FileChannel.MapMode.READ_ONLY,fd.startOffset,fd.length),Interpreter.Options().setNumThreads(2))}}
+  val bundle=ResourceStore(ctx).current()?:error("Missing installed resources");val model=FileInputStream(bundle.model).channel.use{ch->Interpreter(ch.map(java.nio.channels.FileChannel.MapMode.READ_ONLY,0,ch.size()),Interpreter.Options().setNumThreads(2))}
   report.put("model_load_ms",(SystemClock.elapsedRealtimeNanos()-began)/1e6)
-  handle=NativeEngine.init(ctx.assets);report.put("index_load_ms",(SystemClock.elapsedRealtimeNanos()-began)/1e6)
+  handle=NativeEngine.initFile(bundle.catalog.absolutePath);report.put("index_load_ms",(SystemClock.elapsedRealtimeNanos()-began)/1e6)
   val bytes=File(arguments.getString("pcm","/data/local/tmp/event.pcm")).readBytes();val pcm=FloatArray(bytes.size/4);ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(pcm)
   check(SignalGate.audible(pcm)){"Real event fixture incorrectly gated"};report.put("signal_gate_tests","silence and near-silence rejected; real Tanturi accepted")
   val input=ByteBuffer.allocateDirect(8448*4).order(ByteOrder.nativeOrder());val output=ByteBuffer.allocateDirect(128*4).order(ByteOrder.nativeOrder());val rows=JSONArray()

@@ -25,10 +25,15 @@ object ResidentValidation {
   action("Resume");ctx.startService(Intent(ctx,RecognitionService::class.java).setAction(RecognitionService.PAUSE));ctx.startForegroundService(Intent(ctx,RecognitionService::class.java).setAction(RecognitionService.RESUME));SystemClock.sleep(3000)
   ctx.startService(Intent(ctx,RecognitionService::class.java).setAction(RecognitionService.PAUSE));await("pause_complete",3)
   check(events().none{it.optString("event")=="session_error"});check(Store(ctx).root.walkTopDown().count{it.extension=="wav"&&it.length()>44}>=2){"Resume did not capture a second session"}
+  val oldBundle=ResourceStore(ctx).current()!!;val newDir=File(oldBundle.directory.parentFile,"bundle-${oldBundle.archiveHash}-${java.util.UUID.randomUUID()}").apply{mkdirs()}
+  for(name in listOf("catalog.bin","nmfp.tflite")){try{java.nio.file.Files.createLink(File(newDir,name).toPath(),File(oldBundle.directory,name).toPath())}catch(e:java.nio.file.AccessDeniedException){File(oldBundle.directory,name).copyTo(File(newDir,name))}}
+  File(oldBundle.directory,"verified.json").copyTo(File(newDir,"verified.json"));val active=File(oldBundle.directory.parentFile,"active.json");val pointer=JSONObject(active.readText()).put("directory",newDir.name)
+  val atomic=android.util.AtomicFile(active);val out=atomic.startWrite();out.write(pointer.toString().toByteArray());out.fd.sync();atomic.finishWrite(out)
+  ctx.startService(Intent(ctx,RecognitionService::class.java).setAction("RELOAD"));await("resources_released");check(!LiveState.current.listening);action("Resume");await("model_loaded",2);await("index_loaded",2);SystemClock.sleep(2200);action("Pause");SystemClock.sleep(1500)
   instrumentation.runOnMainSync{activity.moveTaskToBack(true)};action("Exit");await("engine_closed");SystemClock.sleep(1200)
   check(ctx.getSystemService(NotificationManager::class.java).activeNotifications.none{it.id==1})
   check(LiveState.current.exited);check(activity.isFinishing||activity.isDestroyed)
-  report.put("status","passed").put("persistent_notification_actions",true).put("pause_no_file_growth",true).put("model_loads",events().count{it.optString("event")=="model_loaded"}).put("index_loads",events().count{it.optString("event")=="index_loaded"}).put("rapid_action_race",true).put("background_exit_finishes_activity",true).put("events",JSONArray(events()))
+  report.put("status","passed").put("persistent_notification_actions",true).put("pause_no_file_growth",true).put("model_index_once_across_ordinary_pauses",true).put("safe_resource_generation_reload",true).put("model_loads",events().count{it.optString("event")=="model_loaded"}).put("index_loads",events().count{it.optString("event")=="index_loaded"}).put("rapid_action_race",true).put("background_exit_finishes_activity",true).put("events",JSONArray(events()))
   File(ctx.filesDir,"resident-validation.json").writeText(report.toString(2));instrumentation.finish(0,Bundle().apply{putString("report",report.toString())})
  }catch(e:Throwable){report.put("status","failed").put("error",e.stackTraceToString());File(instrumentation.targetContext.filesDir,"resident-validation.json").writeText(report.toString(2));instrumentation.finish(1,Bundle().apply{putString("error",e.stackTraceToString())})}}
 }

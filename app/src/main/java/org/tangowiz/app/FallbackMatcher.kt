@@ -8,7 +8,7 @@ import java.nio.ByteOrder
 import java.util.concurrent.atomic.AtomicBoolean
 
 // Separate bounded snapshot worker; live baseline never waits for it.
-class FallbackMatcher(private val assets:AssetManager,private val record:(Float,Float,FloatArray)->Unit):AutoCloseable {
+class FallbackMatcher(private val bundle:BundleSnapshot,private val record:(Float,Float,FloatArray)->Unit):AutoCloseable {
  private val busy=AtomicBoolean(false)
  private val stopping=AtomicBoolean(false)
  private var worker:Thread?=null
@@ -20,8 +20,8 @@ class FallbackMatcher(private val assets:AssetManager,private val record:(Float,
    android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
    val began=android.os.SystemClock.elapsedRealtimeNanos()
    try{
-    if(model==null)model=assets.openFd("nmfp.tflite").use{fd->FileInputStream(fd.fileDescriptor).channel.use{ch->Interpreter(ch.map(java.nio.channels.FileChannel.MapMode.READ_ONLY,fd.startOffset,fd.length),Interpreter.Options().setNumThreads(1))}}
-    if(handle==0L)handle=NativeEngine.init(assets)
+    if(model==null)model=FileInputStream(bundle.model).channel.use{ch->Interpreter(ch.map(java.nio.channels.FileChannel.MapMode.READ_ONLY,0,ch.size()),Interpreter.Options().setNumThreads(1))}
+    if(handle==0L)handle=NativeEngine.initFile(bundle.catalog.absolutePath)
     val input=ByteBuffer.allocateDirect(8448*4).order(ByteOrder.nativeOrder());val output=ByteBuffer.allocateDirect(512).order(ByteOrder.nativeOrder())
     var best:JSONObject?=null;var bestScore=-1.0
     for(speed in doubleArrayOf(.97,.985,1.015,1.03)){
@@ -44,5 +44,5 @@ class FallbackMatcher(private val assets:AssetManager,private val record:(Float,
   },"tango-speed-fallback").apply{priority=Thread.MIN_PRIORITY;start()}
  }
  private fun release(){model?.close();model=null;if(handle!=0L)NativeEngine.close(handle);handle=0L}
- override fun close(){stopping.set(true);worker?.interrupt();worker?.join(10000);if(worker?.isAlive!=true)release()}
+ override fun close(){stopping.set(true);worker?.interrupt();worker?.join();if(worker?.isAlive!=true)release()}
 }
