@@ -1,0 +1,37 @@
+TangoWiz Wear audio protocol1
+
+ChannelClient path /tw/audio/v1. Each channel contains one header followed by
+consecutive frames. Start sequence0; sample position is sequence*4000. A new
+channel creates a fresh UUID using UUID.randomUUID().toString(). After any
+IOException, close the channel and establish a new stream; do not resynchronize.
+The transport owns cancellation/timeouts. Closing it cancels a blocked read.
+
+All framing integers use big endian. All PCM payload samples are signed16-bit
+little endian, mono8000Hz, exactly4000 samples per half-second frame.
+
+Header32bytes:
+  offset0  u32 magic0x54574150 (TWAP)
+  offset4  u16 protocol1
+  offset6  u16 header bytes32
+  offset8  u32 sample rate8000
+  offset12 u16 channels1
+  offset14 u16 signed PCM bits16
+  offset16 UUID most-significant64bits, then least-significant64bits
+
+Frame8024bytes:
+  offset0  u32 magic0x54574146 (TWAF)
+  offset4  u32 body bytes8016, fixed; no peer-controlled allocation
+  offset8  nonnegative i64 frame sequence
+  offset16 nonnegative i64 sample position = sequence*4000
+  offset24 exactly8000 PCM bytes, little endian
+
+Maximum sequence Long.MAX_VALUE/4000, to prevent sample-position overflow.
+AudioWire methods never flush or close the supplied stream. The sender should
+flush after a complete frame. A receiver calls readHeader once, then readFrame
+with expectedSequence0,1,...; increments only after success. Clean disconnect
+and partial header/frame disconnect raise EOFException, a subtype of IOException.
+Malformed protocol, frame lengths, gaps, repeats, or positions raise IOException.
+Invalid local writer arguments raise IllegalArgumentException before any output.
+
+Control messages remain caller-owned JSON on WearMessages paths. This module
+has no Google Play Services dependency and makes no remote-control decisions.

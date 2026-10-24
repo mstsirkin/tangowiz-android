@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class RecognitionService:Service(){
  companion object {
   const val RESUME="RESUME"
+  const val RESTART="RESTART"
   const val PAUSE="PAUSE"
   const val EXIT="EXIT"
   const val EXIT_ACTIVITY="org.tangowiz.app.EXIT_ACTIVITY"
@@ -42,7 +43,7 @@ class RecognitionService:Service(){
  private var indexLoads=0
  private val main=Handler(Looper.getMainLooper())
  override fun onBind(intent:Intent?)=null
- override fun onCreate(){super.onCreate();store=Store(this);getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel("recognition","Recognition",NotificationManager.IMPORTANCE_LOW))}
+ override fun onCreate(){super.onCreate();store=Store(this);PhoneWatch.init(this);getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel("recognition","Recognition",NotificationManager.IMPORTANCE_LOW))}
  private fun event(name:String,extra:JSONObject=JSONObject()){store.append(File(store.root,"lifecycle.jsonl"),extra.put("event",name).put("time",Instant.now().toString()).put("generation",generation).put("model_loads",modelLoads).put("index_loads",indexLoads))}
  private fun notification():Notification {
   fun command(action:String,id:Int,foreground:Boolean=false):PendingIntent {
@@ -57,15 +58,19 @@ class RecognitionService:Service(){
    .addAction(Notification.Action.Builder(null,"Open",open).build())
    .addAction(Notification.Action.Builder(null,"Exit",command(EXIT,3)).build()).build()
  }
+ private fun startRecognitionForeground(){
+  if(Build.VERSION.SDK_INT>=29)startForeground(1,notification(),if(store.microphone=="watch")android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE) else startForeground(1,notification())
+ }
  private fun refreshNotification(){main.post{if(!exiting)getSystemService(NotificationManager::class.java).notify(1,notification())}}
  override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int {
   if(exiting)return START_NOT_STICKY
   when(intent?.action){
    EXIT->{requestExit();return START_NOT_STICKY}
-   "RELOAD"->{synchronized(stateLock){desired=false;generation++;reloadPending=true;stateLock.notifyAll()};stopCapture();releaseWake();LiveState.publish(RecognitionState(resident=true,phase="Ⅱ"));event("resource_reload_requested")}
+   "RELOAD"->{PhoneWatch.engineReady=false;synchronized(stateLock){desired=false;generation++;reloadPending=true;stateLock.notifyAll()};stopCapture();releaseWake();LiveState.publish(RecognitionState(resident=true,phase="Ⅱ"));event("resource_reload_requested")}
+   RESTART->{if(intent.getBooleanExtra("automatic_input_restart",false)&&!desired)return START_NOT_STICKY;synchronized(stateLock){desired=true;generation++;stateLock.notifyAll()};stopCapture();LiveState.publish(RecognitionState(listening=true,resident=true,phase="…",error=intent.getStringExtra("input_error")?:""));event("input_restart_requested")}
    PAUSE,"STOP"->{
     synchronized(stateLock){desired=false;generation++;stateLock.notifyAll()}
-    stopCapture();releaseWake();LiveState.publish(RecognitionState(resident=true,phase="Ⅱ"));event("pause_requested")
+    stopCapture();WatchAudioInput.close();PhoneWatch.stopRemoteCapture();releaseWake();LiveState.publish(RecognitionState(resident=true,phase="Ⅱ"));event("pause_requested")
    }
    else->{
     if(exiting)return START_NOT_STICKY
@@ -74,7 +79,7 @@ class RecognitionService:Service(){
     LiveState.publish(RecognitionState(listening=true,resident=true,phase="…"));event("resume_requested")
    }
   }
-  startForeground(1,notification())
+  startRecognitionForeground()
   if(owner==null)owner=Thread({engineLoop()},"tango-engine-owner").apply{start()}
   return START_NOT_STICKY
  }
@@ -83,10 +88,10 @@ class RecognitionService:Service(){
  private fun releaseWake(){synchronized(stateLock){if(wake?.isHeld==true)wake?.release()}}
  private fun requestExit(){
   synchronized(stateLock){if(exiting)return;exiting=true;desired=false;generation++;stateLock.notifyAll()}
-  event("exit_requested");stopCapture();releaseWake();LiveState.publish(RecognitionState(resident=true,phase="…"))
+  event("exit_requested");stopCapture();WatchAudioInput.close();PhoneWatch.stopRemoteCapture();releaseWake();LiveState.publish(RecognitionState(resident=true,phase="…"))
   if(owner==null){io.shutdown();finishExit()} else getSystemService(NotificationManager::class.java).notify(1,notification())
  }
- override fun onDestroy(){synchronized(stateLock){exiting=true;desired=false;generation++;stateLock.notifyAll()};stopCapture();releaseWake();super.onDestroy()}
+ override fun onDestroy(){synchronized(stateLock){exiting=true;desired=false;generation++;stateLock.notifyAll()};stopCapture();WatchAudioInput.close();PhoneWatch.engineReady=false;releaseWake();super.onDestroy()}
  private fun finishExit(){main.post{
   LiveState.publish(RecognitionState(exited=true));sendBroadcast(Intent(EXIT_ACTIVITY).setPackage(packageName))
   stopForeground(STOP_FOREGROUND_REMOVE);getSystemService(NotificationManager::class.java).cancel(1);stopSelf()
@@ -101,7 +106,7 @@ class RecognitionService:Service(){
     synchronized(stateLock){if(!desired&&!exiting){LiveState.publish(LiveState.current.copy(listening=false,resident=true,phase="Ⅱ",best=null,second=null));event("pause_complete");refreshNotification()}}
    }
   }finally{
-   stopCapture();releaseWake();model?.close();model=null;if(native!=0L)NativeEngine.close(native);native=0L
+   stopCapture();releaseWake();PhoneWatch.engineReady=false;model?.close();model=null;if(native!=0L)NativeEngine.close(native);native=0L
    bundle?.let{ResourcePins.release(it)};bundle=null;ResourceStore(this).cleanupUnused()
    io.shutdown();runCatching{io.awaitTermination(10,java.util.concurrent.TimeUnit.SECONDS)}
    event("engine_closed");finishExit()
@@ -113,22 +118,45 @@ class RecognitionService:Service(){
   val start=SystemClock.elapsedRealtimeNanos();val timings=File(dir,"timing.jsonl")
   fun timing(stage:String,t0:Long,cpu0:Long=0,extra:JSONObject=JSONObject(),process0:Long=0){if(store.timing){extra.put("stage",stage).put("time",Instant.now().toString()).put("elapsed_ms",(SystemClock.elapsedRealtimeNanos()-t0)/1e6);if(cpu0>0)extra.put("caller_thread_cpu_ms",(android.os.Debug.threadCpuTimeNanos()-cpu0)/1e6);if(process0>0)extra.put("process_cpu_ms",android.os.Process.getElapsedCpuTime()-process0);io.execute{store.append(timings,extra)}}}
   try{
-   val size=maxOf(AudioRecord.getMinBufferSize(8000,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT),16000)
-   val ar=AudioRecord(MediaRecorder.AudioSource.UNPROCESSED,8000,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT,size)
-   check(ar.state==AudioRecord.STATE_INITIALIZED){"Microphone initialization failed"};recorder=ar
-   val queue=ArrayBlockingQueue<ShortArray>(240)
-   synchronized(stateLock){
-    if(!active(token)){ar.release();recorder=null;return}
-    ar.startRecording();wake=(getSystemService(POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"TangoWiz:Recognition").apply{acquire()}
+   val usingWatch=store.microphone=="watch"
+   val ar=if(usingWatch)null else {
+    val size=maxOf(AudioRecord.getMinBufferSize(8000,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT),16000)
+    AudioRecord(MediaRecorder.AudioSource.UNPROCESSED,8000,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT,size).also{check(it.state==AudioRecord.STATE_INITIALIZED){"Microphone initialization failed"}}
    }
-   event("capture_started");val captured=java.util.concurrent.atomic.AtomicLong(0)
-   captureThread=Thread({android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);try{while(active(token)){val block=ShortArray(4000);var n=0;while(n<block.size&&active(token)){val got=ar.read(block,n,block.size-n,AudioRecord.READ_BLOCKING);if(got<0)throw IOException("Microphone error $got");n+=got};if(n==block.size){queue.put(block);captured.addAndGet(n.toLong())}}}catch(e:Exception){if(active(token)){synchronized(stateLock){if(active(token)){desired=false;generation++}};LiveState.publish(RecognitionState(resident=true,error=e.message?:"Audio capture failed"))}}},"tango-audio").apply{start()}
+   recorder=ar
+   val queue=ArrayBlockingQueue<ShortArray>(if(usingWatch)8 else 240)
+   synchronized(stateLock){
+    if(!active(token)){ar?.release();recorder=null;return}
+    ar?.startRecording();wake=(getSystemService(POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"TangoWiz:Recognition").apply{acquire()}
+   }
+   event("capture_started",JSONObject().put("source",if(usingWatch)"watch" else "phone"));val captured=java.util.concurrent.atomic.AtomicLong(0)
+   captureThread=Thread({
+    android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO)
+    try{
+     var watchStream:String?=null
+     while(active(token)){
+      val block:ShortArray
+      if(usingWatch){
+       val packet=WatchAudioInput.take()?:continue
+       if(!active(token))break
+       if(watchStream!=null&&watchStream!=packet.stream){WatchAudioInput.returnFirst(packet);PhoneWatch.restartInput();break}
+       watchStream=packet.stream;block=packet.pcm
+      }else{
+       block=ShortArray(4000);var n=0
+       while(n<block.size&&active(token)){val got=ar!!.read(block,n,block.size-n,AudioRecord.READ_BLOCKING);if(got<0)throw IOException("Microphone error $got");n+=got}
+       if(n!=block.size)continue
+      }
+      queue.put(block);captured.addAndGet(block.size.toLong())
+     }
+    }catch(e:Exception){if(active(token)){synchronized(stateLock){if(active(token)){desired=false;generation++}};LiveState.publish(RecognitionState(resident=true,error=e.message?:"Audio capture failed"))}}
+   },"tango-audio").apply{start()}
    var t=SystemClock.elapsedRealtimeNanos()
    if(model==null){if(bundle==null)bundle=ResourceStore(this).pinCurrent()?:throw IOException("Download resources first");FileInputStream(bundle!!.model).channel.use{ch->model=Interpreter(ch.map(java.nio.channels.FileChannel.MapMode.READ_ONLY,0,ch.size()),Interpreter.Options().setNumThreads(2))}
    modelLoads++;event("model_loaded");timing("model_load",t)}
    if(exiting)return
    if(native==0L){t=SystemClock.elapsedRealtimeNanos();native=NativeEngine.initFile(bundle!!.catalog.absolutePath);check(native!=0L){"Index initialization failed"};indexLoads++;event("index_loaded");timing("index_load",t)}
    if(!active(token))return
+   PhoneWatch.engineReady=true;PhoneWatch.changed()
    NativeEngine.reset(native)
    val input=ByteBuffer.allocateDirect(256*33*4).order(ByteOrder.nativeOrder());val output=ByteBuffer.allocateDirect(128*4).order(ByteOrder.nativeOrder())
    val pcmHistory=FloatArray(131072);var pcmSize=0;val nextFrame=IntArray(13);var baseSample=0L;var samples=0L;var lastLogged:Candidate?=null;var logSecond=-60.0;var lastFallback=-30.0;var hadSignal=false
@@ -136,7 +164,7 @@ class RecognitionService:Service(){
    val signalGeneration=java.util.concurrent.atomic.AtomicLong(0)
    val fp=DataOutputStream(BufferedOutputStream(File(dir,"fingerprints.bin").outputStream()));fingerprintLog=fp
    fallbackWorker=FallbackMatcher(bundle!!){offset,speed,embedding->if(active(token))io.execute{if(active(token)){fp.writeDouble(offset.toDouble());fp.writeFloat(speed);embedding.forEach{fp.writeFloat(it)}}}}
-   File(dir,"session.json").writeText(JSONObject().put("start",Instant.now().toString()).put("sample_rate",8000).put("fingerprint_format","big-endian: float64 query_offset_seconds, float32 speed, 128 float32 embedding; repeated records").put("confidence","Heuristic score, not calibrated probability").put("resource_format",bundle!!.formatVersion).put("bundle_version",bundle!!.version).put("archive_sha256",bundle!!.archiveHash).put("app_version",packageManager.getPackageInfo(packageName,0).versionName).toString(2))
+   File(dir,"session.json").writeText(JSONObject().put("start",Instant.now().toString()).put("sample_rate",8000).put("input_source",if(usingWatch)"watch" else "phone").put("fingerprint_format","big-endian: float64 query_offset_seconds, float32 speed, 128 float32 embedding; repeated records").put("confidence","Heuristic score, not calibrated probability").put("resource_format",bundle!!.formatVersion).put("bundle_version",bundle!!.version).put("archive_sha256",bundle!!.archiveHash).put("app_version",packageManager.getPackageInfo(packageName,0).versionName).toString(2))
    while(active(token)){
     val block=queue.poll(1,java.util.concurrent.TimeUnit.SECONDS)?:continue
     val saveAudio=store.audio;val audioSample=samples

@@ -1,0 +1,16 @@
+plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }
+android {
+ namespace 'org.tangowiz.wear'; compileSdk 35
+ defaultConfig { applicationId 'org.tangowiz.app'; minSdk 30; targetSdk 35; versionCode 12; versionName '0.5.0'; testInstrumentationRunner 'org.tangowiz.wear.WatchValidation' }
+ buildTypes { release { minifyEnabled false; signingConfig signingConfigs.debug } }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+ kotlinOptions { jvmTarget='17' }
+}
+dependencies {
+ implementation project(':wear-common')
+ implementation 'com.google.android.gms:play-services-wearable:18.2.0'
+ implementation 'androidx.wear.tiles:tiles:1.4.1'
+ implementation 'androidx.wear.protolayout:protolayout:1.2.1'
+ implementation 'androidx.wear.watchface:watchface-complications-data-source:1.2.1'
+ implementation 'com.google.guava:guava:33.2.1-android'
+}

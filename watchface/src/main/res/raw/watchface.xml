@@ -1,0 +1,16 @@
+<WatchFace width="450" height="450">
+ <Metadata key="PREVIEW_TIME" value="10:08:00"/>
+ <Scene backgroundColor="#000000">
+  <DigitalClock x="100" y="42" width="250" height="52"><TimeText x="0" y="0" width="250" height="52" format="hh:mm"><Font family="SYNC_TO_DEVICE" size="30" color="#CACDD4"/></TimeText></DigitalClock>
+  <ComplicationSlot slotId="1" supportedTypes="LONG_TEXT" x="32" y="112" width="386" height="230" displayName="Orchestra and song" isCustomizable="TRUE">
+   <DefaultProviderPolicy primaryProvider="org.tangowiz.app/org.tangowiz.wear.TangoComplicationService" primaryProviderType="LONG_TEXT" defaultSystemProvider="EMPTY" defaultSystemProviderType="LONG_TEXT"/>
+   <BoundingRoundBox x="0" y="0" width="386" height="230" cornerRadius="20"/>
+   <Complication type="LONG_TEXT">
+    <PartText x="0" y="0" width="386" height="132"><Text align="CENTER" maxLines="2"><Font family="SYNC_TO_DEVICE" size="48" weight="BOLD" color="#B6E6CF"><Template>%s<Parameter expression="[COMPLICATION.TEXT]"/></Template></Font></Text></PartText>
+    <PartText x="12" y="142" width="362" height="85"><Text align="CENTER" maxLines="2"><Font family="SYNC_TO_DEVICE" size="28" color="#FFFFFF"><Template>%s<Parameter expression="[COMPLICATION.TITLE]"/></Template></Font></Text></PartText>
+   </Complication>
+
+   <Complication type="EMPTY"><PartText x="0" y="25" width="386" height="180"><Text align="CENTER" maxLines="2"><Font family="SYNC_TO_DEVICE" size="48" color="#888888">—</Font></Text></PartText></Complication>
+  </ComplicationSlot>
+ </Scene>
+</WatchFace>

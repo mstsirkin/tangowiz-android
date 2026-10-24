@@ -1,0 +1,9 @@
+plugins { id 'com.android.library' }
+android {
+ namespace 'org.tangowiz.link'
+ compileSdk 35
+ defaultConfig { minSdk 26 }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+// Production protocol code depends only on the Java standard library.
+dependencies { testImplementation 'junit:junit:4.13.2' }

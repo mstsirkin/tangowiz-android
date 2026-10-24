@@ -4,6 +4,8 @@
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
+ <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>
  <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
  <uses-permission android:name="android.permission.WAKE_LOCK"/>
  <application android:theme="@android:style/Theme.Material.NoActionBar" android:label="TangoWiz" android:icon="@mipmap/ic_launcher" android:allowBackup="false" android:supportsRtl="true">
@@ -11,8 +13,9 @@
   <activity android:name=".SetupActivity" android:exported="true" android:launchMode="singleTop"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
   <activity android:name=".ExportActivity" android:exported="false" android:launchMode="singleTop"/>
   <service android:name=".ExportService" android:exported="false" android:foregroundServiceType="dataSync"/>
-  <service android:name=".RecognitionService" android:exported="false" android:foregroundServiceType="microphone"/>
+  <service android:name=".RecognitionService" android:exported="false" android:foregroundServiceType="microphone|connectedDevice"/>
   <service android:name=".ResourceDownloadService" android:exported="false" android:foregroundServiceType="dataSync"/>
+  <service android:name=".PhoneWearService" android:exported="true"><intent-filter><action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED"/><action android:name="com.google.android.gms.wearable.DATA_CHANGED"/><action android:name="com.google.android.gms.wearable.CHANNEL_EVENT"/><data android:scheme="wear" android:host="*" android:pathPrefix="/tw/"/></intent-filter></service>
   <provider android:name=".ExportProvider" android:authorities="org.tangowiz.app.exports" android:exported="false" android:grantUriPermissions="true"/>
  </application>
 </manifest>
