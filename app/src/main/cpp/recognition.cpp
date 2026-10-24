@@ -103,7 +103,9 @@ std::string Engine::search(const float*e,int count,float speed,float offset){
  }
  const auto groupingEnd=std::chrono::steady_clock::now();
  std::ostringstream out;out<<"{\"catalogFormat\":"<<formatVersion<<",\"matcher\":\"pq8-sequence-reconstruction\",\"calibrated\":false,\"candidates\":[";
- for(size_t index=0;index<std::min<size_t>(5,groups.size());index++){
+ // Expose the bounded recording pool so presentation can choose a different
+ // orchestra even when the first several recording groups share one credit.
+ for(size_t index=0;index<std::min<size_t>(16,groups.size());index++){
   const auto&g=groups[index];const auto&h=g.anchor;auto*m=metadataRow(h.track);
   std::string orch=text(m[2]);if(orch.empty())orch=text(m[5]);
   std::set<std::string> sourceIds;std::array<std::set<std::string>,4> alternatives;

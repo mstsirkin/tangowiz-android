@@ -45,5 +45,17 @@ int main(int argc,char**argv){
  Fixture wrongStride(2);uint64_t shortRows=48;std::memcpy(wrongStride.bytes.data()+72+7*16+8,&shortRows,8);wrongStride.reject();
  Fixture badString(2);badString.row(1,3,UINT32_MAX);badString.reject();
  Fixture shortFile(2);shortFile.bytes.resize(4096);shortFile.reject();
+ // The presentation layer needs a different-orchestra competitor even when
+ // the first five recording groups all carry the same orchestra credit.
+ Fixture pool(2);pool.bytes.assign(4096,0);std::memcpy(pool.bytes.data(),"TWIDX002",8);
+ uint64_t ph[]={2,128,64,1,2,17,17,9};std::memcpy(pool.bytes.data()+8,ph,sizeof(ph));
+ std::vector<uint8_t> pcodes(2*64*16);for(int block=0;block<2;block++)for(int lane=0;lane<16;lane++)pcodes[block*64*16+lane]=1;pool.add(0,pcodes.data(),pcodes.size());
+ std::array<int64_t,32> pids;pids.fill(-1);for(int i=0;i<17;i++)pids[i]=i;pool.add(1,pids.data(),sizeof(pids));
+ int64_t poff[]={0,2};pool.add(2,poff,sizeof(poff));std::vector<float> ppq(64*256*2);ppq[2]=1;pool.add(3,ppq.data(),ppq.size()*4);std::array<float,128> pcoarse{};pool.add(4,pcoarse.data(),sizeof(pcoarse));
+ std::array<int64_t,18> pbounds;for(int i=0;i<18;i++)pbounds[i]=i;pool.add(5,pbounds.data(),sizeof(pbounds));std::array<uint32_t,17> prev;for(int i=0;i<17;i++)prev[i]=i;pool.add(6,prev.data(),sizeof(prev));
+ std::string ps(1,'\0');auto text=[&](const std::string&s){uint32_t at=ps.size();ps+=s;ps+='\0';return at;};const auto pt=text("Example"),pa=text("Example Ensemble"),other=text("Other Ensemble");
+ std::vector<uint32_t> pm;for(uint32_t i=0;i<17;i++)for(auto value:{text("pool-source-"+std::to_string(i)),pt,i==15?other:pa,0u,0u,0u,i+1})pm.push_back(value);
+ pool.add(7,pm.data(),pm.size()*4);pool.add(8,ps.data(),ps.size());std::memcpy(pool.bytes.data()+72,pool.section.data(),sizeof(pool.section));
+ Engine pe(pool.bytes.data(),pool.bytes.size());std::array<float,128> pq{};pq[0]=1;auto expanded=pe.search(pq.data(),1,1,0);auto presented=expanded.substr(0,expanded.find(",\"rawCandidates\":"));size_t at=0,count=0;while((at=presented.find("\"groupSize\":1",at))!=std::string::npos){count++;at++;}assert(count==16);assert(presented.find("Other Ensemble")!=std::string::npos);
  std::cout<<"PASS: V1/V2 compatibility, whole-group unranked metadata, sparse/zero/maximum IDs, unchanged score, malformed versions/stride/strings/truncation\n";
 }

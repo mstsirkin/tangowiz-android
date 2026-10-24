@@ -4,7 +4,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /** A native recording group; source IDs and unmodified metadata remain available for diagnostics. */
-data class Candidate(val id:String,val orchestra:String,val title:String,val singer:String="",val year:String="",val score:Double=0.0,val confidence:Int=0,val speed:Double=1.0,val groupId:String=id,val sourceIds:List<String> =listOf(id),val metadataAlternatives:Map<String,List<String>> =emptyMap(),val rawJson:String=""){
+data class Candidate(val id:String,val orchestra:String,val title:String,val singer:String="",val year:String="",val score:Double=0.0,val confidence:Int=0,val speed:Double=1.0,val groupId:String=id,val sourceIds:List<String> =listOf(id),val metadataAlternatives:Map<String,List<String>> =emptyMap(),val rawJson:String="",val presentationContributors:List<String> =emptyList()){
  val aliases: Set<String> get()=(sourceIds+id).filter{it.isNotBlank()}.toSet()
  fun sameRecording(other:Candidate)=groupId.isNotBlank()&&groupId==other.groupId||aliases.intersect(other.aliases).isNotEmpty()
  fun labels(field:String):List<String>{val scalar=when(field){"orchestra"->orchestra;"title"->title;"singer"->singer;"year"->year;else->""};return (metadataAlternatives[field].orEmpty()+scalar).map{it.trim()}.filter{it.isNotEmpty()}.distinct()}
@@ -16,7 +16,7 @@ data class Candidate(val id:String,val orchestra:String,val title:String,val sin
    val options=MetadataLabels.fields.filter{alternatives?.has(it)==true}.associateWith{field->val a=alternatives?.optJSONArray(field);if(a==null)emptyList() else (0 until a.length()).map{a.optString(it)}.filter{it.isNotBlank()}}
    val ids=j.optJSONArray("sourceIds")?:j.optJSONArray("source_ids");val id=j.optString("id");val sources=if(ids==null)listOf(id) else (0 until ids.length()).map{ids.optString(it)}.filter{it.isNotBlank()}
    val score=j.optDouble("score",0.0);val confidence=if(j.has("confidence_score"))j.optInt("confidence_score") else (j.optDouble("confidence",score)*100).toInt()
-   return Candidate(id,j.optString("orchestra"),j.optString("title"),j.optString("singer"),j.optString("year"),score,confidence.coerceIn(0,100),j.optDouble("speed",1.0),j.optString("groupId",j.optString("group_id",id)).ifBlank{id},sources,options,j.toString())
+   return Candidate(id,j.optString("orchestra"),j.optString("title"),j.optString("singer"),j.optString("year"),score,confidence.coerceIn(0,100),j.optDouble("speed",1.0),j.optString("groupId",j.optString("group_id",id)).ifBlank{id},sources,options,j.toString(),j.optJSONArray("presentationContributors")?.let{a->(0 until a.length()).mapNotNull{a.optJSONObject(it)?.toString()}}?:emptyList())
   }
   fun distinctRunner(best:Candidate?,candidates:List<Candidate>)=if(best==null)null else candidates.filter{!best.sameRecording(it)}.maxByOrNull{it.score}
  }
@@ -24,6 +24,7 @@ data class Candidate(val id:String,val orchestra:String,val title:String,val sin
 object MetadataLabels{
  val fields=listOf("orchestra","title","singer","year")
  private fun folded(value:String)=java.text.Normalizer.normalize(value,java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}+"),"").lowercase(java.util.Locale.ROOT).replace(Regex("[^\\p{L}\\p{N}]+")," ").trim()
+ fun orchestraKey(candidate:Candidate):String?{val labels=resolve(candidate,"orchestra");if(labels.size!=1)return null;val label=labels.single();val key=folded(label).replace(Regex("^(?:orquesta(?: tipica)?|orq(?: tipica)?) +"),"");return key.takeIf{it.isNotEmpty()&&!label.contains('?')&&it !in setOf("unknown","unidentified","desconocido","desconocida","sin identificar","no identificado","not known")}}
  private fun quality(value:String)=value.count{it.code>127}*4+(if(value.any{it.isLowerCase()}&&value.any{it.isUpperCase()})2 else 0)
  private fun equivalent(values:List<String>,field:String):List<String>{val choices=linkedMapOf<String,String>();for(v in values){val key=if(field=="orchestra")folded(v).replace(Regex("^(?:orquesta(?: tipica)?|orq(?: tipica)?) +"),"") else folded(v);val old=choices[key];if(old==null||quality(v)>quality(old))choices[key]=v};return choices.values.toList()}
  fun resolve(candidate:Candidate,field:String):List<String>{var values=candidate.labels(field)
@@ -45,4 +46,19 @@ object MetadataLabels{
 object RecordingHistory{
  fun consecutive(rows:List<JSONObject>):List<JSONObject>{val grouped=mutableListOf<JSONObject>();for(row in rows){val previous=grouped.lastOrNull();if(previous!=null&&previous.optString("session")==row.optString("session")&&Candidate.fromJson(previous).aliases.intersect(Candidate.fromJson(row).aliases).isNotEmpty()){grouped[grouped.lastIndex]=merge(previous,row)}else grouped.add(JSONObject(row.toString()))};return grouped}
  private fun merge(old:JSONObject,new:JSONObject):JSONObject{val a=Candidate.fromJson(old);val b=Candidate.fromJson(new);return JSONObject(new.toString()).apply{remove("groupId");remove("group_id");remove("runner_up_group")}.put("sourceIds",JSONArray((a.aliases+b.aliases).sorted())).put("metadataAlternatives",JSONObject().also{j->for(field in MetadataLabels.fields){val authoritative=b.metadataAlternatives.containsKey(field)&&b.aliases.containsAll(a.aliases)&&b.labels(field).isNotEmpty();j.put(field,JSONArray(if(authoritative)b.labels(field) else (a.labels(field)+b.labels(field)).distinct()))}}).put("time",old.optString("time",new.optString("time"))).put("last_time",new.optString("time"))}
+}
+
+/** Orchestra rows are presentation only: a winning recording's identity never absorbs its competitors. */
+object OrchestraPresentation{
+ fun candidates(result:JSONObject?):List<Candidate>{val a=result?.optJSONArray("candidates")?:return emptyList();return (0 until a.length()).mapNotNull{a.optJSONObject(it)?.let(Candidate::fromJson)}}
+ fun merge(candidates:List<Candidate>):List<Candidate>{
+  val rows=mutableListOf<MutableList<Candidate>>();val byOrchestra=linkedMapOf<String,MutableList<Candidate>>()
+  val recordings=mutableListOf<Candidate>();for(candidate in candidates.sortedByDescending{it.score})if(recordings.none{it.sameRecording(candidate)})recordings.add(candidate)
+  for(candidate in recordings){val key=MetadataLabels.orchestraKey(candidate);if(key==null){rows.add(mutableListOf(candidate));continue};val row=byOrchestra[key];if(row==null){val added=mutableListOf(candidate);byOrchestra[key]=added;rows.add(added)}else row.add(candidate)}
+  return rows.map{members->val winner=members.first();if(members.size==1)winner else{
+   val alternatives=MetadataLabels.fields.associateWith{field->members.flatMap{it.labels(field)}.distinct()}
+   val provenance=members.flatMap{c->if(c.presentationContributors.isNotEmpty())c.presentationContributors else listOf(JSONObject().put("id",c.id).put("sourceIds",JSONArray(c.sourceIds)).put("metadataAlternatives",c.alternativesJson()).put("orchestra",c.orchestra).put("title",c.title).put("singer",c.singer).put("year",c.year).put("score",c.score).put("speed",c.speed).toString())}.distinct()
+   winner.copy(metadataAlternatives=alternatives,presentationContributors=provenance)
+  }}
+ }
 }
