@@ -66,7 +66,31 @@ class MainActivity:Activity(){
  override fun onNewIntent(value:Intent){super.onNewIntent(value);intent=value;ensureResources()}
  private fun ensureResources():Boolean{if(ResourceStore(this).current()!=null)return true;startActivity(Intent(this,SetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP));finish();return false}
  private fun openUpdate(){startActivity(Intent(this,SetupActivity::class.java).putExtra(SetupActivity.UPDATE,true))}
- private fun vMenu(anchor:View){val r=ResourceStore(this);val menu=PopupMenu(this,anchor);menu.menu.add(0,1,0,"Update");menu.menu.add(0,3,2,"Export debug info");menu.menu.add(0,2,1,"Automatic update checks").apply{isCheckable=true;isChecked=r.automaticChecks};menu.setOnMenuItemClickListener{item->when(item.itemId){1->openUpdate();3->startActivity(Intent(this,ExportActivity::class.java).putExtra(ExportActivity.NEW,true).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP));2->{r.automaticChecks=!r.automaticChecks;item.isChecked=r.automaticChecks}};true};menu.show()}
+ private fun vMenu(anchor:View){val r=ResourceStore(this);val menu=PopupMenu(this,anchor);menu.menu.add(0,1,0,"Update");menu.menu.add(0,3,2,"Export debug info");menu.menu.add(0,4,3,"Clear older history and recordings");menu.menu.add(0,2,1,"Automatic update checks").apply{isCheckable=true;isChecked=r.automaticChecks};menu.setOnMenuItemClickListener{item->when(item.itemId){1->openUpdate();4->confirmCleanup();3->startActivity(Intent(this,ExportActivity::class.java).putExtra(ExportActivity.NEW,true).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP));2->{r.automaticChecks=!r.automaticChecks;item.isChecked=r.automaticChecks}};true};menu.show()}
+ private fun confirmCleanup(){
+  android.app.AlertDialog.Builder(this)
+   .setTitle("Clear older history and recordings?")
+   .setMessage("Deletes history, audio, fingerprints and debug logs from completed sessions. The active session is kept and listening continues. Exported ZIP files are kept.")
+   .setNegativeButton("Cancel",null)
+   .setPositiveButton("Clear"){_,_->
+    val progress=android.app.AlertDialog.Builder(this).setMessage("Clearing older sessions…").setCancelable(false).create()
+    progress.show()
+    Thread{
+     val result=runCatching{SessionFiles.clearOlder(applicationContext)}
+     runOnUiThread{
+      if(!isFinishing&&!isDestroyed){
+       progress.dismiss()
+       render()
+       val message=result.fold(
+        onSuccess={r->if(r.failed==0)"Older sessions cleared · %.1f MB freed".format(r.bytes/1e6) else "Cleanup incomplete: ${r.failed} items could not be removed. The active session was kept."},
+        onFailure={e->e.message?:"Could not clear older sessions"}
+       )
+       android.app.AlertDialog.Builder(this).setMessage(message).setPositiveButton("OK",null).show()
+      }
+     }
+    }.start()
+   }.show()
+ }
  private fun showUpdateOffer(){if(!foreground||isFinishing||isDestroyed||!ResourceStore(this).automaticChecks)return;val state=ResourceProgress.current;val offered=ResourceStore(this).offered();val key=if(state.kind=="update_app")"app" else offered?.archive?.sha256?:return;if(key==promptedOffer)return
   if(state.kind=="available"||state.kind=="update_app"){promptedOffer=key;android.app.AlertDialog.Builder(this).setMessage(if(state.kind=="update_app")state.message else "New resources available · %.2f GB".format(offered!!.archive.bytes/1e9)).setPositiveButton(if(state.kind=="update_app")"Update app" else "Update"){_,_->if(state.kind=="update_app")startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(APP_UPDATE_URL))) else openUpdate()}.setNegativeButton("Later",null).show()}
  }
@@ -90,6 +114,6 @@ class MainActivity:Activity(){
  // Presentation scale only; raw scores, history storage and matcher thresholds stay unchanged.
  private fun displayPercent(c:Candidate)=(c.confidence*2).coerceIn(0,100)
  private fun render(){if(!::store.isInitialized)return;val s=LiveState.current;candidate(best,s.best,true);candidate(runner,s.second,false);listen.text=if(s.listening)"Ⅱ" else "▶";listen.contentDescription=if(s.listening)"Pause identification" else if(s.resident)"Resume identification" else "Start listening";phase.text=if(s.error.isNotEmpty())s.error else if(s.listening)"${s.phase}  ${s.seconds.toInt()}s" else if(s.resident)"Ⅱ" else "";findViewById<Button>(100).apply{alpha=if(store.audio)1f else .45f;setTextColor(if(store.audio)Color.rgb(255,85,100) else white)};findViewById<Button>(101).apply{alpha=if(store.timing)1f else .45f;background=box(if(store.timing)Color.rgb(43,100,80) else Color.rgb(43,47,64))}
-  val version=LiveState.historyVersion.get();if(version!=historyVersion&&!loadingHistory){loadingHistory=true;Thread{val rows=store.history();val grouped=RecordingHistory.consecutive(rows);runOnUiThread{historyRows=grouped.asReversed().take(200);historyVersion=version;loadingHistory=false;historyAdapter.notifyDataSetChanged()}}.start()}
+  val version=LiveState.historyVersion.get();if(version!=historyVersion&&!loadingHistory){loadingHistory=true;Thread{val rows=store.history();val grouped=RecordingHistory.consecutive(rows);runOnUiThread{loadingHistory=false;if(LiveState.historyVersion.get()==version){historyRows=grouped.asReversed().take(200);historyVersion=version;historyAdapter.notifyDataSetChanged()}else render()}}.start()}
  }
 }

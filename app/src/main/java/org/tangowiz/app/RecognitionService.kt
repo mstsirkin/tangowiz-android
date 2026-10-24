@@ -108,7 +108,7 @@ class RecognitionService:Service(){
   }
  }
  private fun runSession(token:Long){
-  val session=Instant.now().toString().replace(":","-");val dir=File(store.root,session).apply{mkdirs()}
+  val session=Instant.now().toString().replace(":","-");val dir=SessionFiles.begin(store.root,session)
   var audio:WavWriter?=null;var fingerprintLog:DataOutputStream?=null;var fallbackWorker:FallbackMatcher?=null
   val start=SystemClock.elapsedRealtimeNanos();val timings=File(dir,"timing.jsonl")
   fun timing(stage:String,t0:Long,cpu0:Long=0,extra:JSONObject=JSONObject(),process0:Long=0){if(store.timing){extra.put("stage",stage).put("time",Instant.now().toString()).put("elapsed_ms",(SystemClock.elapsedRealtimeNanos()-t0)/1e6);if(cpu0>0)extra.put("caller_thread_cpu_ms",(android.os.Debug.threadCpuTimeNanos()-cpu0)/1e6);if(process0>0)extra.put("process_cpu_ms",android.os.Process.getElapsedCpuTime()-process0);io.execute{store.append(timings,extra)}}}
@@ -198,8 +198,8 @@ class RecognitionService:Service(){
    stopCapture();runCatching{captureThread?.join(2000)};captureThread=null;recorder?.release();recorder=null
    runCatching{fallbackWorker?.close()}
    io.execute{runCatching{audio?.close()};audio=null;runCatching{fingerprintLog?.close()}}
-   runCatching{io.submit{}.get(10,java.util.concurrent.TimeUnit.SECONDS)}
-   releaseWake();if(native!=0L)NativeEngine.reset(native);event("session_closed",JSONObject().put("session",session))
+   val writesClosed=runCatching{io.submit{}.get(10,java.util.concurrent.TimeUnit.SECONDS)}.isSuccess
+   releaseWake();if(native!=0L)NativeEngine.reset(native);event("session_closed",JSONObject().put("session",session));if(writesClosed)SessionFiles.end(store.root,session)
   }
  }
 }
