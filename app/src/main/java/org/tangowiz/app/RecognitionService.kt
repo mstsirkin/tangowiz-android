@@ -136,7 +136,7 @@ class RecognitionService:Service(){
    val signalGeneration=java.util.concurrent.atomic.AtomicLong(0)
    val fp=DataOutputStream(BufferedOutputStream(File(dir,"fingerprints.bin").outputStream()));fingerprintLog=fp
    fallbackWorker=FallbackMatcher(bundle!!){offset,speed,embedding->if(active(token))io.execute{if(active(token)){fp.writeDouble(offset.toDouble());fp.writeFloat(speed);embedding.forEach{fp.writeFloat(it)}}}}
-   File(dir,"session.json").writeText(JSONObject().put("start",Instant.now().toString()).put("sample_rate",8000).put("fingerprint_format","big-endian: float64 query_offset_seconds, float32 speed, 128 float32 embedding; repeated records").put("confidence","Heuristic score, not calibrated probability").toString(2))
+   File(dir,"session.json").writeText(JSONObject().put("start",Instant.now().toString()).put("sample_rate",8000).put("fingerprint_format","big-endian: float64 query_offset_seconds, float32 speed, 128 float32 embedding; repeated records").put("confidence","Heuristic score, not calibrated probability").put("resource_format",bundle!!.formatVersion).put("bundle_version",bundle!!.version).put("archive_sha256",bundle!!.archiveHash).put("app_version",packageManager.getPackageInfo(packageName,0).versionName).toString(2))
    while(active(token)){
     val block=queue.poll(1,java.util.concurrent.TimeUnit.SECONDS)?:continue
     val saveAudio=store.audio;val audioSample=samples

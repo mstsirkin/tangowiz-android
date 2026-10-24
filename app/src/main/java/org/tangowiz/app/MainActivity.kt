@@ -52,7 +52,6 @@ class MainActivity:Activity(){
   toolbar.addView(View(this),LinearLayout.LayoutParams(0,1,1f))
   val audio=icon("●","Save audio"){store.audio=!store.audio;render()};audio.id=100;toolbar.addView(audio)
   val debug=icon("🐞","Timing debug"){store.timing=!store.timing;render()};debug.id=101;toolbar.addView(debug)
-  toolbar.addView(icon("↗","Export recordings and diagnostics"){Thread{runCatching{store.export()}.onSuccess{file->runOnUiThread{startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply{type="application/zip";putExtra(Intent.EXTRA_STREAM,Uri.parse("content://org.tangowiz.app.exports/${file.name}"));addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},""))}}.onFailure{runOnUiThread{Toast.makeText(this,it.message,Toast.LENGTH_LONG).show()}}}.start()})
   toolbar.addView(icon("⋮","More options"){vMenu(toolbar)})
   phase=text("",14f);root.addView(phase)
   best=LinearLayout(this).apply{orientation=1;setPadding(dp(8),dp(14),dp(8),dp(14));background=box(Color.rgb(34,39,54))};root.addView(best,LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(10)})
@@ -67,7 +66,7 @@ class MainActivity:Activity(){
  override fun onNewIntent(value:Intent){super.onNewIntent(value);intent=value;ensureResources()}
  private fun ensureResources():Boolean{if(ResourceStore(this).current()!=null)return true;startActivity(Intent(this,SetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP));finish();return false}
  private fun openUpdate(){startActivity(Intent(this,SetupActivity::class.java).putExtra(SetupActivity.UPDATE,true))}
- private fun vMenu(anchor:View){val r=ResourceStore(this);val menu=PopupMenu(this,anchor);menu.menu.add(0,1,0,"Update");menu.menu.add(0,2,1,"Automatic update checks").apply{isCheckable=true;isChecked=r.automaticChecks};menu.setOnMenuItemClickListener{item->when(item.itemId){1->openUpdate();2->{r.automaticChecks=!r.automaticChecks;item.isChecked=r.automaticChecks}};true};menu.show()}
+ private fun vMenu(anchor:View){val r=ResourceStore(this);val menu=PopupMenu(this,anchor);menu.menu.add(0,1,0,"Update");menu.menu.add(0,3,2,"Export debug info");menu.menu.add(0,2,1,"Automatic update checks").apply{isCheckable=true;isChecked=r.automaticChecks};menu.setOnMenuItemClickListener{item->when(item.itemId){1->openUpdate();3->startActivity(Intent(this,ExportActivity::class.java).putExtra(ExportActivity.NEW,true).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP));2->{r.automaticChecks=!r.automaticChecks;item.isChecked=r.automaticChecks}};true};menu.show()}
  private fun showUpdateOffer(){if(!foreground||isFinishing||isDestroyed||!ResourceStore(this).automaticChecks)return;val state=ResourceProgress.current;val offered=ResourceStore(this).offered();val key=if(state.kind=="update_app")"app" else offered?.archive?.sha256?:return;if(key==promptedOffer)return
   if(state.kind=="available"||state.kind=="update_app"){promptedOffer=key;android.app.AlertDialog.Builder(this).setMessage(if(state.kind=="update_app")state.message else "New resources available · %.2f GB".format(offered!!.archive.bytes/1e9)).setPositiveButton(if(state.kind=="update_app")"Update app" else "Update"){_,_->if(state.kind=="update_app")startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(APP_UPDATE_URL))) else openUpdate()}.setNegativeButton("Later",null).show()}
  }

@@ -8,6 +8,7 @@ import java.time.Instant
 import java.util.concurrent.CopyOnWriteArrayList
 
 data class RecognitionState(val listening:Boolean=false,val phase:String="",val best:Candidate?=null,val second:Candidate?=null,val seconds:Double=0.0,val error:String="",val resident:Boolean=false,val exited:Boolean=false)
+data class ExportProgress(val copiedBytes:Long,val totalBytes:Long,val filesDone:Int,val totalFiles:Int)
 object LiveState {
  @Volatile var current=RecognitionState()
  val historyVersion=java.util.concurrent.atomic.AtomicLong(0)
@@ -25,21 +26,47 @@ class Store(val context:Context) {
  fun result(c:Candidate,second:Candidate?, seconds:Double,session:String,rawResult:JSONObject?=null){
   append(history,JSONObject().put("time",Instant.now().toString()).put("session",session).put("audio_seconds",seconds).put("id",c.id).put("sourceIds",JSONArray(c.aliases.sorted())).put("metadataAlternatives",c.alternativesJson()).put("orchestra",c.orchestra).put("title",c.title).put("singer",c.singer).put("year",c.year).put("score",c.score).put("confidence_score",c.confidence).put("speed",c.speed).put("state",if(c.confidence>=70) "strong" else "tentative").put("runner_up",second?.id ?: ""));if(rawResult!=null){val dir=File(root,session).apply{mkdirs()};append(File(dir,"matches.jsonl"),JSONObject().put("time",Instant.now().toString()).put("audio_seconds",seconds).put("result",rawResult))};LiveState.historyVersion.incrementAndGet()
  }
- fun export():File {
-  val out=File(context.cacheDir,"tangowiz-debug-${System.currentTimeMillis()}.zip")
-  java.util.zip.ZipOutputStream(out.outputStream().buffered()).use{zip->
-   root.walkTopDown().filter{it.isFile}.forEach{file->
-    var length=file.length();val wav=file.extension=="wav"&&length>=44
-    if(file.name=="fingerprints.bin")length-=length%524
-    zip.putNextEntry(java.util.zip.ZipEntry(file.relativeTo(root).path))
-    file.inputStream().use{src->
-     if(wav){val data=(length-44)/2*2;val h=java.nio.ByteBuffer.allocate(44).order(java.nio.ByteOrder.LITTLE_ENDIAN);h.put("RIFF".toByteArray()).putInt((data+36).toInt()).put("WAVEfmt ".toByteArray()).putInt(16).putShort(1).putShort(1).putInt(8000).putInt(16000).putShort(2).putShort(16).put("data".toByteArray()).putInt(data.toInt());zip.write(h.array());src.skip(44);length=data}
-     val buffer=ByteArray(65536);while(length>0){val n=src.read(buffer,0,minOf(buffer.size.toLong(),length).toInt());if(n<=0)break;zip.write(buffer,0,n);length-=n}
-    };zip.closeEntry()
+ fun export(progress:(ExportProgress)->Unit={},cancelled:()->Boolean={false}):File {
+  fun checkCancelled(){if(cancelled()||Thread.currentThread().isInterrupted)throw java.io.InterruptedIOException("Export cancelled")}
+  data class Input(val file:File,val length:Long,val wav:Boolean)
+  val files=root.walkTopDown().onEnter{checkCancelled();!java.nio.file.Files.isSymbolicLink(it.toPath())}.filter{it.isFile&&!java.nio.file.Files.isSymbolicLink(it.toPath())}.map{file->
+   checkCancelled();var length=file.length();val wav=file.extension.equals("wav",true)&&length>=44
+   if(file.name=="fingerprints.bin")length-=length%524
+   if(wav)length=44+(length-44)/2*2
+   Input(file,length,wav)
+  }.toList()
+  val total=files.sumOf{it.length};var copied=0L;var done=0;var notified=0L
+  fun notifyProgress(force:Boolean=false){val now=System.nanoTime();if(force||now-notified>=200_000_000L){progress(ExportProgress(copied,total,done,files.size));notified=now}}
+  notifyProgress(true)
+  val staging=File.createTempFile("tangowiz-export-",".partial",context.cacheDir)
+  val name=java.math.BigInteger(java.util.UUID.randomUUID().toString().replace("-",""),16).toString()
+  val out=File(context.cacheDir,"tangowiz-debug-$name.zip")
+  try{
+   java.io.FileOutputStream(staging).use{fileOut->
+    val buffered=java.io.BufferedOutputStream(fileOut,262144)
+    java.util.zip.ZipOutputStream(buffered).use{zip->
+     zip.setLevel(1)
+     val buffer=ByteArray(262144)
+     for(input in files){
+      checkCancelled();zip.putNextEntry(java.util.zip.ZipEntry(input.file.relativeTo(root).invariantSeparatorsPath))
+      java.io.RandomAccessFile(input.file,"r").use{src->
+       var remaining=input.length
+       if(input.wav){val data=input.length-44;require(data<=0xffffffffL-36){"Recording is too large for a WAV export"};val h=java.nio.ByteBuffer.allocate(44).order(java.nio.ByteOrder.LITTLE_ENDIAN);h.put("RIFF".toByteArray()).putInt((data+36).toInt()).put("WAVEfmt ".toByteArray()).putInt(16).putShort(1).putShort(1).putInt(8000).putInt(16000).putShort(2).putShort(16).put("data".toByteArray()).putInt(data.toInt());zip.write(h.array());src.seek(44);remaining-=44;copied+=44;notifyProgress()}
+       while(remaining>0){checkCancelled();val n=src.read(buffer,0,minOf(buffer.size.toLong(),remaining).toInt());if(n<=0)throw java.io.EOFException("A recording changed during export; pause and try again");zip.write(buffer,0,n);remaining-=n;copied+=n;notifyProgress()}
+      }
+      zip.closeEntry();done++;notifyProgress(true)
+     }
+     context.assets.list("notices")?.forEach{name->checkCancelled();zip.putNextEntry(java.util.zip.ZipEntry("notices/$name"));context.assets.open("notices/$name").use{it.copyTo(zip)};zip.closeEntry()}
+     val metadata=JSONObject().put("exported_at",Instant.now().toString()).put("files",files.size).put("snapshot_bytes",total)
+     runCatching{context.packageManager.getPackageInfo(context.packageName,0)}.onSuccess{metadata.put("app_version",it.versionName).put("app_version_code",if(android.os.Build.VERSION.SDK_INT>=28)it.longVersionCode else it.versionCode.toLong())}.onFailure{metadata.put("app_version_error",it.message)}
+     runCatching{val current=ResourceStore(context).pinCurrent();if(current==null)metadata.put("active_resources",JSONObject.NULL) else try{val resources=JSONObject().put("format",current.formatVersion).put("bundle_version",current.version).put("archive_sha256",current.archiveHash);runCatching{JSONObject(File(current.directory,"verified.json").readText())}.onSuccess{resources.put("manifest",it)}.onFailure{resources.put("manifest_error",it.message)};metadata.put("active_resources",resources)}finally{ResourcePins.release(current)}}.onFailure{metadata.put("resource_error",it.message)}
+     zip.putNextEntry(java.util.zip.ZipEntry("export_metadata.json"));zip.write(metadata.toString(2).toByteArray());zip.closeEntry()
+     zip.putNextEntry(java.util.zip.ZipEntry("README.txt"));zip.write("TangoWiz microphone audio, fingerprints, results and optional timing logs. Confidence scores are heuristic, not calibrated probabilities. Times UTC. No automatic uploads. Files are snapshots; WAV headers are repaired for saved PCM and incomplete fingerprint records are omitted.\n".toByteArray());zip.closeEntry()
+     checkCancelled();zip.finish();zip.flush();buffered.flush();fileOut.fd.sync()
+    }
    }
-   context.assets.list("notices")?.forEach{name->zip.putNextEntry(java.util.zip.ZipEntry("notices/$name"));context.assets.open("notices/$name").use{it.copyTo(zip)};zip.closeEntry()}
-   zip.putNextEntry(java.util.zip.ZipEntry("README.txt"));zip.write("TangoWiz microphone audio, fingerprints, results and optional timing logs. Confidence scores are heuristic, not calibrated probabilities. Times UTC. No automatic uploads.\n".toByteArray());zip.closeEntry()
-  }
-  return out
+   checkCancelled();if(!staging.renameTo(out))throw java.io.IOException("Cannot finish the export file")
+   notifyProgress(true);return out
+  }catch(e:Throwable){staging.delete();throw e}
  }
 }
