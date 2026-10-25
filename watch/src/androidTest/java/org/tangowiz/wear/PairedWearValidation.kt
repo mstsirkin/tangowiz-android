@@ -24,6 +24,7 @@ class PairedWearValidation:Instrumentation(){
  override fun onCreate(arguments:Bundle?){super.onCreate(arguments);args=arguments?:Bundle();start()}
  private fun <T> waitTask(task:Task<T>):T=Tasks.await(task,30,TimeUnit.SECONDS)
  override fun onStart(){
+  if(args.getString("mode")=="ambient_local"){AmbientValidation.run(this);return}
   val ctx=targetContext
   val report=JSONObject().put("actual_paired_data_layer",true).put("physical_microphone_quality_tested",false)
   val queue=LinkedBlockingQueue<Pair<String,JSONObject>>()
@@ -78,6 +79,12 @@ class PairedWearValidation:Instrumentation(){
     SystemClock.sleep(20000)
     check(WatchCache.capturing){"Watch microphone stopped during capture"}
     report.put("watch_audio_record_capture","passed_20_seconds")
+    if(DisplaySession.enabled(ctx)){
+     ctx.startService(Intent(ctx,WatchDisplayService::class.java).setAction(DisplaySession.STOP))
+     SystemClock.sleep(1000)
+     check(WatchCache.capturing&&WatchCache.state.optBoolean("listening")){"Closing display stopped identification or microphone"}
+     report.put("closing_display_keeps_capture",true)
+    }
    }else{
     val bytes=File("/data/local/tmp/event.pcm").readBytes();check(bytes.size>=320000)
     val pcm=FloatArray(80000);ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(pcm)

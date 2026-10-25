@@ -4,12 +4,17 @@ cd "$(dirname "$0")"
 sdk_dir="${ANDROID_HOME:-/home/mst/android}"
 build_tools="${ANDROID_BUILD_TOOLS:-$sdk_dir/build-tools/35.0.0}"
 keystore_path="${ANDROID_KEYSTORE:-/home/mst/.android/debug.keystore}"
-./gradlew :app:assembleRelease :watch:assembleRelease :watchface:assembleRelease "-Pandroid.aapt2FromMavenOverride=$build_tools/aapt2" "$@"
+read -r -a modules <<< "${ANDROID_BUILD_MODULES:-app watch watchface}"
+tasks=()
+for module in "${modules[@]}"; do
+ case "$module" in app|watch|watchface) tasks+=(":$module:assembleRelease");; *) echo "Unknown Android module: $module" >&2; exit 2;; esac
+done
+./gradlew "${tasks[@]}" "-Pandroid.aapt2FromMavenOverride=$build_tools/aapt2" "$@"
 mkdir -p dist
-for module in app watch watchface; do
+for module in "${modules[@]}"; do
  case "$module" in
   app) artifact="TangoWiz-0.5.0" ;;
-  watch) artifact="TangoWiz-Watch-0.5.0" ;;
+  watch) artifact="TangoWiz-Watch-0.5.1" ;;
   watchface) artifact="TangoWiz-Face-0.5.0" ;;
  esac
  input_apk="$module/build/outputs/apk/release/$module-release.apk"

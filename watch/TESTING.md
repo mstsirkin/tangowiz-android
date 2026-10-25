@@ -50,3 +50,13 @@ If a remote Activity launch is blocked, open the watch companion as a user actio
 Two paired emulators (phone API 35, Wear API 34) passed both modes. The known reference was recognized and its pushed orchestra/song appeared on the actual WFF face. Duplicate/stale control checks passed. A 19.5-second mono 8 kHz WAV reached the phone during the 20-second microphone test while the watch was Dozing. Physical Watch 2 microphone quality, latency and battery remain unmeasured.
 
 The transport was deliberately disconnected (both peers reported connected=false) and restored (both reported connected=true). Repeating the known-audio test with a new stream UUID passed. Phone lifecycle counters showed one model load and one index load across both fixture passes and the microphone-service test. This reconnect check interrupted the idle transport, not an actively captured physical microphone.
+
+## Full-screen ambient validation (0.5.1)
+
+Run the same paired runner with `-e mode ambient_local`. This test uses explicitly synthetic local labels and real AndroidX/OS ambient callbacks. At `waiting_for_sleep`, send KEYCODE_SLEEP (223); at `waiting_for_wake`, send KEYCODE_WAKEUP (224). It checks Ongoing Activity metadata, hidden interactive controls, deferred ambient rendering, 75 seconds of retention beyond the emulator's 60-second return timeout, latest cached text on wake, and Close display removing its notification without pausing identification. It saves/restores fixture state and refuses to interrupt an enabled display session. Results are in `files/ambient-validation.json`.
+
+This passed on Wear OS 5 (API 34), followed by a real paired known-audio recognition test against the unchanged 0.5.0 phone. Ricardo Tanturi and the song rendered in the actual full-screen display. The emulator's ambient service had to be restarted after a system-service crash during boot. Its wrist-tilt sensor HAL also crashed, so tilt-to-wake was disabled on the test device and explicit sleep/wake keys were used. No APK workaround was added. These results do not validate physical wrist gestures or older Wear OS retention behavior.
+
+With display mode enabled, microphone mode also checks that Close display leaves actual capture/listening active. Separately verify the phone receives a WAV while Dozing.
+
+The paired 0.5.1 microphone/display check passed: capture remained active for 20 seconds while Dozing, Close display left microphone capture and identification running, and the phone received 21.5 seconds of mono 8 kHz WAV audio.

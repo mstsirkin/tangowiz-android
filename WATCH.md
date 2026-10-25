@@ -4,7 +4,7 @@ The phone performs recognition with its existing CPU model and native C++ index 
 
 ## Install
 
-Install `TangoWiz-0.5.0.apk` on the phone, and both `TangoWiz-Watch-0.5.0.apk` and `TangoWiz-Face-0.5.0.apk` on the watch, for example with WearLoad or ADB. The companion and phone share the package ID and signing certificate required by the Wear OS Data Layer; the face has a separate package. Keep the phone's installed model/catalog. The watch needs neither of those large resources.
+Install `TangoWiz-0.5.0.apk` on the phone, and both `TangoWiz-Watch-0.5.1.apk` and `TangoWiz-Face-0.5.0.apk` on the watch, for example with WearLoad or ADB. The companion and phone share the package ID and signing certificate required by the Wear OS Data Layer; the face has a separate package. Keep the phone's installed model/catalog. The watch needs neither of those large resources.
 
 Add the TangoWiz Tile from the watch's Tile chooser. Select TangoWiz face in the normal face picker. Its large LONG_TEXT slot defaults to the TangoWiz orchestra/song provider; if the system requests a provider or permission, select TangoWiz orchestra and song. Companion minimum API 30; face minimum API 33/Wear OS 4. The face uses WFF 1 for broad compatibility.
 
@@ -37,3 +37,13 @@ The shared framing tests exercise roundtrip/endianness, truncation, malformed fo
 The 0.5.0 phone and watch runtime payloads were tested through the real Google Play services Data Layer on two paired emulators (phone API 35, Wear API 34). A known music fixture sent by ChannelClient from the watch was recognized as Ricardo Tanturi, and the pushed orchestra/title rendered on the actual WFF face. Explicit command retries and stale revisions passed. The production AudioRecord microphone service continued while the watch was Dozing; the phone saved 19.5 seconds of mono 8 kHz audio during a 20-second test. Both nodes reported a deliberate disconnect and reconnect, then the known audio matched again with a new stream UUID. The phone loaded its model/index only once across these tests.
 
 The fixture test injects music on the watch; the microphone-service test uses the emulator's synthetic/silent hardware input. These establish transport/control/face functionality, not physical acoustic quality, Bluetooth range, battery life or phone/watch latency. Reproduction instructions are in [watch/TESTING.md](watch/TESTING.md). No recognition implementation change or new APK is required for these results.
+
+## Full-screen ambient display (0.5.1)
+
+Update the watch companion to `TangoWiz-Watch-0.5.1.apk`; the existing 0.5.0 phone app, catalog and face remain compatible. Tap ⛶ in the watch controls or Tile to open the full-screen display. It shows the orchestra prominently, song, small clock, and the existing live score when interactive. The gear opens controls; Back from controls returns to the display.
+
+The display uses AndroidX ambient lifecycle callbacks and an Ongoing Activity attached to a connected-device foreground service. Grant its notification permission when prompted. It does not keep the screen bright or acquire a display wake lock. Incoming results are cached while ambient; rendering occurs on the system's ambient updates and immediately on exit from ambient. Interactive updates use the existing push path, bypassing complication scheduling. Low-bit ambient disables text antialiasing; burn-in-sensitive displays shift content within a safe inset on ambient ticks.
+
+Back from the display, or its notification's Close display action, ends only that display session and notification. Identification and watch microphone capture remain separate. Explicit Home navigation is respected. When an already-selected ambient display needs the watch microphone started remotely, the permission/control flow returns to the full-screen display after starting the microphone service.
+
+On Wear OS 5+, the Ongoing Activity supports staying visible past the return-to-face timeout. Older Wear OS versions can still apply their system return-to-face setting. Ambient drawing frequency remains controlled by Wear OS; this mode does not remove power-management limits. Physical Watch 2 behavior, sound quality, battery and latency still require device testing.

@@ -3,11 +3,16 @@
  <uses-permission android:name="android.permission.RECORD_AUDIO"/>
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
+ <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>
  <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
  <uses-permission android:name="android.permission.WAKE_LOCK"/>
  <application android:name=".WatchApp" android:theme="@android:style/Theme.DeviceDefault.NoActionBar" android:label="TangoWiz" android:icon="@drawable/app_icon" android:allowBackup="false" android:supportsRtl="true">
+  <uses-library android:name="com.google.android.wearable" android:required="false"/>
   <meta-data android:name="com.google.android.wearable.standalone" android:value="false"/>
   <activity android:name=".WatchActivity" android:exported="true" android:launchMode="singleTop"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
+  <activity android:name=".AmbientDisplayActivity" android:exported="true" android:launchMode="singleTop"/>
+  <service android:name=".WatchDisplayService" android:exported="false" android:foregroundServiceType="connectedDevice"/>
   <service android:name=".WatchListener" android:exported="true"><intent-filter><action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED"/><action android:name="com.google.android.gms.wearable.DATA_CHANGED"/><action android:name="com.google.android.gms.wearable.CHANNEL_EVENT"/><data android:scheme="wear" android:host="*" android:pathPrefix="/tw/"/></intent-filter></service>
   <service android:name=".WatchMicService" android:exported="false" android:foregroundServiceType="microphone"/>
   <service android:name=".TangoTileService" android:label="TangoWiz" android:icon="@drawable/app_icon" android:exported="true" android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER"><intent-filter><action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER"/></intent-filter><meta-data android:name="androidx.wear.tiles.PREVIEW" android:resource="@drawable/tile_preview"/></service>
