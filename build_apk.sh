@@ -13,7 +13,7 @@ done
 mkdir -p dist
 for module in "${modules[@]}"; do
  case "$module" in
-  app) artifact="TangoWiz-0.5.0" ;;
+  app) artifact="TangoWiz-0.5.2" ;;
   watch) artifact="TangoWiz-Watch-0.5.1" ;;
   watchface) artifact="TangoWiz-Face-0.5.0" ;;
  esac

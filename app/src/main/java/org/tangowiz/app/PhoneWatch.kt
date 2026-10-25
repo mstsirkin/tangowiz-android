@@ -27,8 +27,8 @@ object PhoneWatch {
  @Volatile var engineReady=false
  @Volatile private var pendingListening:Boolean?=null
  private var lastSent=0L
- private var lastKey=""
- private var lastScheduled=0L
+ private val pushPolicy=WatchPushPolicy()
+ private val urgentState=java.util.concurrent.atomic.AtomicBoolean(false)
  private var lastStatus=""
  fun init(ctx:Context){synchronized(this){if(initialized)return;context=ctx.applicationContext;initialized=true;LiveState.listeners.add{scheduleState()}}}
  private fun prefs()=context.getSharedPreferences("watch-link",0)
@@ -50,19 +50,23 @@ object PhoneWatch {
   val live=LiveState.current
   if(pendingListening==live.listening||live.exited)pendingListening=null
   val key="${live.listening}|${live.error}|${live.resident}|$engineReady"
-  synchronized(this){val now=SystemClock.elapsedRealtime();if(!force&&key==lastKey&&now-lastScheduled<Store(context).watchUpdateInterval)return;lastKey=key;lastScheduled=now}
+  val confident=live.listening&&live.error.isEmpty()&&(live.best?.confidence?:0)>=70
+  val decision=pushPolicy.observe(SystemClock.elapsedRealtime(),Store(context).watchUpdateInterval,key,confident,force)
+  if(decision==WatchPushPolicy.Decision.SKIP)return
+  if(decision==WatchPushPolicy.Decision.NEWLY_CONFIDENT)urgentState.set(true)
   stateDirty.set(true)
   if(stateQueued.compareAndSet(false,true))network.execute{try{do{stateDirty.set(false);publishState()}while(stateDirty.get())}finally{stateQueued.set(false);if(stateDirty.get())scheduleState(true)}}
  }
  private fun send(node:String,path:String,value:JSONObject){val bytes=value.toString().toByteArray();require(bytes.size<=90000){"Watch message too large"};Wearable.getMessageClient(context).sendMessage(node,path,bytes)}
  private fun publishState(){
   runCatching{
+   val urgent=urgentState.getAndSet(false)
    val snapshot=state();val now=SystemClock.elapsedRealtime()
    val nodes=Tasks.await(Wearable.getNodeClient(context).connectedNodes,10,TimeUnit.SECONDS)
    for(node in nodes)runCatching{send(node.id,WearMessages.STATE_PATH,snapshot)}
    if(snapshot.optBoolean("ready")&&snapshot.optBoolean("listening")&&snapshot.optString("microphone")=="watch"&&!captureRequested&&nodes.any{it.isNearby}){captureRequested=true;requestCapture(true)}
    // Persist the latest result so a sleeping/reconnecting companion can catch up.
-   if(now-lastSent>=Store(context).watchUpdateInterval){lastSent=now;val request=PutDataMapRequest.create(WearMessages.STATE_PATH);request.dataMap.putString("json",snapshot.toString());Wearable.getDataClient(context).putDataItem(request.asPutDataRequest())}
+   if(urgent||now-lastSent>=Store(context).watchUpdateInterval){lastSent=now;val request=PutDataMapRequest.create(WearMessages.STATE_PATH);request.dataMap.putString("json",snapshot.toString());val data=request.asPutDataRequest();if(urgent)data.setUrgent();Wearable.getDataClient(context).putDataItem(data)}
   }
  }
  fun command(ctx:Context,node:String,raw:ByteArray){init(ctx);if(raw.size>16000)return;worker.execute{

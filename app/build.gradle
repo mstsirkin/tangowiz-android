@@ -6,8 +6,8 @@ android {
   applicationId 'org.tangowiz.app'
   minSdk 26
   targetSdk 35
-  versionCode 12
-  versionName '0.5.0'
+  versionCode 14
+  versionName '0.5.2'
   testInstrumentationRunner 'org.tangowiz.app.RecognitionInstrumentation'
   ndk { abiFilters 'arm64-v8a', 'x86_64' }
   externalNativeBuild { cmake { cppFlags '-std=c++17 -O3 -fno-fast-math -ffp-contract=off' } }
@@ -21,6 +21,7 @@ android {
  kotlinOptions { jvmTarget='17' }
 }
 dependencies {
+ testImplementation 'junit:junit:4.13.2'
  implementation project(':wear-common')
  implementation 'com.google.android.gms:play-services-wearable:18.2.0'
  implementation('org.tensorflow:tensorflow-lite:2.15.0') { transitive = false }
