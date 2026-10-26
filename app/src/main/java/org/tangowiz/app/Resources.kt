@@ -11,6 +11,12 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.zip.ZipInputStream
 import org.tensorflow.lite.Interpreter
 import java.util.UUID
+import java.util.concurrent.TimeUnit
+import javax.net.SocketFactory
+import okhttp3.Call
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Request
 
 const val RESOURCE_FORMAT=2
 const val RESOURCE_MANIFEST_URL="https://github.com/mstsirkin/tangowiz-android/releases/download/resources-v2/manifest.json"
@@ -41,12 +47,21 @@ data class ResourceManifest(val version:String,val archiveUrl:String,val archive
 }
 class RemoteResponse(val code:Int,val headers:Map<String,String>,val body:InputStream,private val done:()->Unit={}):Closeable{fun header(name:String)=headers.entries.firstOrNull{it.key.equals(name,true)}?.value;override fun close(){try{body.close()}finally{done()}}}
 fun interface ResourceTransport {fun open(url:String,headers:Map<String,String>):RemoteResponse;fun cancel(){}}
-class HttpResourceTransport:ResourceTransport {
- private val connections=java.util.concurrent.ConcurrentHashMap<HttpURLConnection,Boolean>()
- override fun cancel(){connections.keys.forEach{it.disconnect()}}
+class HttpResourceTransport(private val httpClient:OkHttpClient=client):ResourceTransport {
+ companion object {
+  private val client=OkHttpClient.Builder()
+   .socketFactory(DownloadSocketFactory(SocketFactory.getDefault(),DownloadSocketFactory.REQUESTED_RECEIVE_BYTES){android.util.Log.i("TangoDownload",it)})
+   .connectTimeout(20,TimeUnit.SECONDS).readTimeout(30,TimeUnit.SECONDS)
+   .protocols(listOf(Protocol.HTTP_1_1)).followSslRedirects(false).build()
+ }
+ private val calls=java.util.concurrent.ConcurrentHashMap<Call,Boolean>()
+ override fun cancel(){calls.keys.forEach{it.cancel()}}
  override fun open(url:String,headers:Map<String,String>):RemoteResponse {
-  val c=URL(url).openConnection() as HttpURLConnection;c.connectTimeout=20000;c.readTimeout=30000;c.instanceFollowRedirects=true;c.setRequestProperty("Accept-Encoding","identity");headers.forEach{(k,v)->c.setRequestProperty(k,v)}
-  connections[c]=true;try{val code=c.responseCode;val h=c.headerFields.filterKeys{it!=null}.mapKeys{it.key!!}.mapValues{it.value.joinToString(",")};return RemoteResponse(code,h,if(code in 200..299)c.inputStream else c.errorStream?:ByteArrayInputStream(byteArrayOf())){connections.remove(c);c.disconnect()}}catch(e:Exception){connections.remove(c);c.disconnect();throw e}
+  val request=Request.Builder().url(url).header("Accept-Encoding","identity");headers.forEach{(k,v)->request.header(k,v)}
+  val call=httpClient.newCall(request.build());calls[call]=true
+  try{val response=call.execute();val h=response.headers.names().associateWith{response.headers.values(it).joinToString(",")}
+   return RemoteResponse(response.code,h,response.body?.byteStream()?:ByteArrayInputStream(byteArrayOf())){calls.remove(call);response.close()}
+  }catch(e:Exception){calls.remove(call);call.cancel();throw e}
  }
 }
 object ResourcePins {
