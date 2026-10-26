@@ -22,7 +22,8 @@ object ResourceValidation {
    if(url.endsWith("manifest")){if(manifestNetwork)throw IOException("DNS unavailable");RemoteResponse(manifestStatus,emptyMap(),manifest.toString().byteInputStream())}
    else{val range=headers["Range"];if(range==null||ignoreRange)RemoteResponse(200,emptyMap(),archive.inputStream()) else{
     val m=Regex("bytes=(\\d+)-(\\d*)").matchEntire(range)!!;val start=m.groupValues[1].toInt();val end=m.groupValues[2].toIntOrNull()?:archive.lastIndex;val bytes=archive.copyOfRange(start,end+1)
-    val body=if(failBody)object:InputStream(){var n=0;override fun read():Int{if(n>=4000)throw IOException("Connection lost");return if(n<bytes.size)bytes[n++].toInt()and 255 else -1};override fun read(b:ByteArray,o:Int,l:Int):Int{if(n>=4000)throw IOException("Connection lost");if(n>=bytes.size)return -1;val take=minOf(l,4000-n,bytes.size-n);System.arraycopy(bytes,n,b,o,take);n+=take;return take}} else bytes.inputStream()
+    // Allow one partial response per lane, then keep failing until the retry budget is exhausted.
+    val body=if(failBody)object:InputStream(){var n=if((0..3).any{start==archive.size*it/4})0 else 4000;override fun read():Int{if(n>=4000)throw IOException("Connection lost");return if(n<bytes.size)bytes[n++].toInt()and 255 else -1};override fun read(b:ByteArray,o:Int,l:Int):Int{if(n>=4000)throw IOException("Connection lost");if(n>=bytes.size)return -1;val take=minOf(l,4000-n,bytes.size-n);System.arraycopy(bytes,n,b,o,take);n+=take;return take}} else bytes.inputStream()
     RemoteResponse(206,mapOf("Content-Range" to "bytes $start-$end/${archive.size}"),body)
    }}
   }

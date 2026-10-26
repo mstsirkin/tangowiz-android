@@ -47,7 +47,7 @@ data class ResourceManifest(val version:String,val archiveUrl:String,val archive
 }
 class RemoteResponse(val code:Int,val headers:Map<String,String>,val body:InputStream,private val done:()->Unit={}):Closeable{fun header(name:String)=headers.entries.firstOrNull{it.key.equals(name,true)}?.value;override fun close(){try{body.close()}finally{done()}}}
 fun interface ResourceTransport {fun open(url:String,headers:Map<String,String>):RemoteResponse;fun cancel(){}}
-class HttpResourceTransport(private val httpClient:OkHttpClient=client):ResourceTransport {
+class HttpResourceTransport(private val httpClient:OkHttpClient=client,private val idleTimeoutMs:Long=45000):ResourceTransport {
  companion object {
   private val client=OkHttpClient.Builder()
    .socketFactory(DownloadSocketFactory(SocketFactory.getDefault(),DownloadSocketFactory.REQUESTED_RECEIVE_BYTES){android.util.Log.i("TangoDownload",it)})
@@ -60,7 +60,7 @@ class HttpResourceTransport(private val httpClient:OkHttpClient=client):Resource
   val request=Request.Builder().url(url).header("Accept-Encoding","identity");headers.forEach{(k,v)->request.header(k,v)}
   val call=httpClient.newCall(request.build());calls[call]=true
   try{val response=call.execute();val h=response.headers.names().associateWith{response.headers.values(it).joinToString(",")}
-   return RemoteResponse(response.code,h,response.body?.byteStream()?:ByteArrayInputStream(byteArrayOf())){calls.remove(call);response.close()}
+   return RemoteResponse(response.code,h,DownloadReadWatchdog(response.body?.byteStream()?:ByteArrayInputStream(byteArrayOf()),idleTimeoutMs){call.cancel()}){calls.remove(call);response.close()}
   }catch(e:Exception){calls.remove(call);call.cancel();throw e}
  }
 }
@@ -77,11 +77,17 @@ class ResourceStore(context:Context,private val transport:ResourceTransport=Http
  private val pointer=AtomicFile(File(root,"active.json"))
  private val pending=File(root,"pending.json")
  private val offer=File(root,"offer.json")
+ private val cancelled=java.util.concurrent.atomic.AtomicBoolean(false)
  private val prefs=context.getSharedPreferences("settings",0)
  var automaticChecks:Boolean get()=prefs.getBoolean("automatic_update_checks",false);set(value){prefs.edit().putBoolean("automatic_update_checks",value).apply()}
  fun dueAutomaticCheck()=automaticChecks&&System.currentTimeMillis()-prefs.getLong("last_resource_check",0)>24*60*60*1000L
  fun hasPending()=pending.isFile
- fun cancel(){transport.cancel()}
+ fun cancel(){cancelled.set(true);transport.cancel()}
+ private fun checkCancelled(){if(cancelled.get()||Thread.currentThread().isInterrupted)throw InterruptedIOException("Download paused; resume to continue")}
+ fun discardPartialDownloads(){
+  val transient=Regex("(?:[0-9a-f]{64}\\.(?:part|single|ranges\\.json)(?:\\.bak|\\.new)?|(?:pending|offer)\\.json(?:\\.bak|\\.new)?|staging-[0-9a-f]{64})")
+  root.listFiles()?.filter{transient.matches(it.name)}?.forEach{if(!it.deleteRecursively())throw IOException("Could not remove partial download")}
+ }
  private fun write(file:File,j:JSONObject){val a=AtomicFile(file);val out=a.startWrite();try{out.write(j.toString().toByteArray());out.fd.sync();a.finishWrite(out)}catch(e:Exception){a.failWrite(out);throw e}}
  fun current():BundleSnapshot?=synchronized(ResourcePins.lock){runCatching{
   val j=pointer.openRead().use{JSONObject(it.bufferedReader().readText())};val m=ResourceManifest.parse(j);val directory=j.getString("directory");require(directory.matches(Regex("bundle-[a-f0-9]{64}-[a-f0-9-]{36}")));val dir=File(root,directory)
@@ -91,12 +97,14 @@ class ResourceStore(context:Context,private val transport:ResourceTransport=Http
  fun cleanupUnused(){synchronized(ResourcePins.lock){val active=current()?.directory?.absolutePath;root.listFiles()?.filter{it.isDirectory&&it.name.startsWith("bundle-")&&it.absolutePath!=active&&it.absolutePath !in ResourcePins.held}?.forEach{it.deleteRecursively()}}}
  fun offered():ResourceManifest?=runCatching{ResourceManifest.parse(JSONObject(offer.readText()))}.getOrNull()?.takeIf{it.archive.sha256!=current()?.archiveHash}
  fun check(download:Boolean):Boolean {
+  checkCancelled()
   progress(ResourceState("checking","Checking updates…"))
   val m=transport.open(manifestUrl,emptyMap()).use{r->
    if(r.code==404||r.code==410)throw AppUpdateRequired("Resources for this app format are no longer available")
    if(r.code!=200)throw IOException("Update check failed (HTTP ${r.code}); retry later")
    val text=r.body.readBytesLimited(128*1024).toString(Charsets.UTF_8);ResourceManifest.parse(runCatching{JSONObject(text)}.getOrElse{throw AppUpdateRequired("The resource manifest needs a newer app")})
   }
+  checkCancelled()
   prefs.edit().putLong("last_resource_check",System.currentTimeMillis()).apply()
   if(current()?.archiveHash==m.archive.sha256){progress(ResourceState("ready","Up to date"));return false}
   write(offer,m.json)
@@ -105,11 +113,12 @@ class ResourceStore(context:Context,private val transport:ResourceTransport=Http
  }
  fun resume():Boolean{val m=ResourceManifest.parse(JSONObject(pending.readText()));install(m);return true}
  fun acceptOffer():Boolean{val m=offered()?:throw IOException("Check for updates first");write(pending,m.json);install(m);return true}
- private fun sha(file:File,onBytes:(Long)->Unit={}):String{var count=0L;val digest=MessageDigest.getInstance("SHA-256");file.inputStream().buffered().use{input->val b=ByteArray(262144);while(true){if(Thread.currentThread().isInterrupted)throw InterruptedIOException("Download paused; retry to continue");val n=input.read(b);if(n<0)break;digest.update(b,0,n);count+=n;onBytes(count)}};return digest.digest().joinToString(""){"%02x".format(it)}}
+ private fun sha(file:File,onBytes:(Long)->Unit={}):String{var count=0L;val digest=MessageDigest.getInstance("SHA-256");file.inputStream().buffered().use{input->val b=ByteArray(262144);while(true){checkCancelled();val n=input.read(b);if(n<0)break;digest.update(b,0,n);count+=n;onBytes(count)}};return digest.digest().joinToString(""){"%02x".format(it)}}
  private fun install(m:ResourceManifest){
+  checkCancelled()
   val part=File(root,"${m.archive.sha256}.part");if(part.length()>m.archive.bytes)part.delete()
   val single=File(root,"${m.archive.sha256}.single")
-  if(!single.exists()&&!ParallelArchive(transport,progress).fetch(m,part))single.writeText("range fallback")
+  if(!single.exists()&&!ParallelArchive(transport,progress,cancelled={cancelled.get()}).fetch(m,part))single.writeText("range fallback")
   if(single.exists())downloadSingle(m,part)
   val verificationTotal=m.archive.bytes+m.files.values.sumOf{it.bytes};var lastVerification=0L;var lastBytes=0L;var rawVerified=0L
   fun verification(received:Long){if(received-lastBytes<262144&&received!=verificationTotal)return;lastBytes=received;val now=System.currentTimeMillis();if(now-lastVerification>=250||received==verificationTotal){progress(ResourceState("verifying","Verifying resources…",received,verificationTotal));lastVerification=now}}
@@ -117,14 +126,13 @@ class ResourceStore(context:Context,private val transport:ResourceTransport=Http
   val stage=File(root,"staging-${m.archive.sha256}");stage.deleteRecursively();stage.mkdirs()
   try{
    val seen=mutableSetOf<String>();ZipInputStream(part.inputStream().buffered()).use{zip->while(true){val entry=zip.nextEntry?:break;val expected=m.files[entry.name]?:throw IOException("Unexpected resource ZIP entry");requireDownload(!entry.isDirectory&&seen.add(entry.name),"Duplicate or invalid ZIP entry");val digest=MessageDigest.getInstance("SHA-256");var bytes=0L
-    FileOutputStream(File(stage,entry.name)).use{fileOut->val out=BufferedOutputStream(fileOut,262144);val b=ByteArray(262144);while(true){if(Thread.currentThread().isInterrupted)throw InterruptedIOException("Download paused; retry to continue");val n=zip.read(b);if(n<0)break;bytes+=n;requireDownload(bytes<=expected.bytes,"Resource ZIP expands beyond expected size");digest.update(b,0,n);out.write(b,0,n);rawVerified+=n;verification(m.archive.bytes+rawVerified)};out.flush();fileOut.fd.sync()}
+    FileOutputStream(File(stage,entry.name)).use{fileOut->val out=BufferedOutputStream(fileOut,262144);val b=ByteArray(262144);while(true){checkCancelled();val n=zip.read(b);if(n<0)break;bytes+=n;requireDownload(bytes<=expected.bytes,"Resource ZIP expands beyond expected size");digest.update(b,0,n);out.write(b,0,n);rawVerified+=n;verification(m.archive.bytes+rawVerified)};out.flush();fileOut.fd.sync()}
     requireDownload(bytes==expected.bytes&&digest.digest().joinToString(""){"%02x".format(it)}==expected.sha256,"Resource file failed verification");zip.closeEntry()
    }};requireDownload(seen==m.files.keys,"Incomplete resource ZIP")
    try{validate(BundleSnapshot(stage,m.version,m.archive.sha256,m.formatVersion))}catch(e:Exception){throw AppUpdateRequired("These recognition resources need a newer app")}
    write(File(stage,"verified.json"),m.json);val target=File(root,"bundle-${m.archive.sha256}-${UUID.randomUUID()}")
    synchronized(ResourcePins.lock){
-   requireDownload(stage.renameTo(target),"Cannot activate resource directory");beforeActivationCommit()
-   if(Thread.currentThread().isInterrupted)throw InterruptedIOException("Download paused; retry to continue")
+   beforeActivationCommit();checkCancelled();requireDownload(stage.renameTo(target),"Cannot activate resource directory")
    val out=pointer.startWrite();try{out.write(JSONObject(m.json.toString()).put("directory",target.name).toString().toByteArray());out.fd.sync();pointer.finishWrite(out)}catch(e:Exception){pointer.failWrite(out);throw e}
    }
    pending.delete();offer.delete();part.delete();File(root,"${m.archive.sha256}.ranges.json").delete();single.delete();progress(ResourceState("ready","Resources ready"))
@@ -141,7 +149,7 @@ class ResourceStore(context:Context,private val transport:ResourceTransport=Http
      else if(r.code==206){val range=Regex("bytes (\\d+)-(\\d+)/(\\d+)").matchEntire(r.header("Content-Range")?:"")?:throw IOException("Invalid download range response");requireDownload(range.groupValues[1].toLong()==offset&&range.groupValues[3].toLong()==m.archive.bytes&&range.groupValues[2].toLong() in offset until m.archive.bytes,"Download range does not match the checkpoint")}
      else throw IOException("Download failed (HTTP ${r.code}); retry to continue")
      FileOutputStream(part,offset>0).use{out->var received=offset;var syncAt=offset;var updateAt=0L;val b=ByteArray(262144)
-      while(true){if(Thread.currentThread().isInterrupted)throw InterruptedIOException("Download paused; retry to continue");val n=r.body.read(b);if(n<0)break;requireDownload(received+n<=m.archive.bytes,"Download exceeds expected size");out.write(b,0,n);received+=n
+      while(true){checkCancelled();val n=r.body.read(b);if(n<0)break;requireDownload(received+n<=m.archive.bytes,"Download exceeds expected size");out.write(b,0,n);received+=n
        if(received-syncAt>=4*1024*1024){out.fd.sync();syncAt=received};val now=System.currentTimeMillis();if(now-updateAt>250){progress(ResourceState("downloading","Downloading resources",received,m.archive.bytes));updateAt=now}
       };out.fd.sync();requireDownload(received==m.archive.bytes,"Download interrupted; retry to continue")
      }
@@ -151,4 +159,4 @@ class ResourceStore(context:Context,private val transport:ResourceTransport=Http
  }
  private fun requireDownload(value:Boolean,message:String){if(!value)throw IOException(message)}
 }
-private fun InputStream.readBytesLimited(max:Int):ByteArray {val out=ByteArrayOutputStream();val b=ByteArray(4096);while(true){val n=read(b);if(n<0)break;if(out.size()+n>max)throw IOException("Manifest is too large");out.write(b,0,n)};return out.toByteArray()}
+internal fun InputStream.readBytesLimited(max:Int):ByteArray {val out=ByteArrayOutputStream();val b=ByteArray(4096);while(true){val n=read(b);if(n<0)break;if(out.size()+n>max)throw IOException("Manifest is too large");out.write(b,0,n)};return out.toByteArray()}
