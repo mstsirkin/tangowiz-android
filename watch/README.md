@@ -11,3 +11,5 @@ The LONG_TEXT complication caches the orchestra as primary text and song as titl
 Actual Xiaomi Watch 2 microphone quality, Data Layer latency, lock-screen startup and battery life require paired-device testing. Emulator UI/resampler checks do not establish these properties.
 
 The optional 0.5.1 full-screen display opens with ⛶ in the companion or Tile. Orchestra/song pushes render directly while interactive; AndroidX ambient callbacks show a monochrome display with a small clock while asleep. An Ongoing Activity supports retention past the return timeout on Wear OS 5+; older versions may still apply their return-to-face setting. Back or Close display ends only this display session, not recognition or microphone capture. See [TESTING.md](TESTING.md) for validation and physical-device limits.
+
+With phone/watch 0.5.5, tap the current orchestra in controls or the full-screen display to reset recognition with the newest two seconds of captured audio. No extra watch button is added. Reset preserves saved history and the microphone selection; exact command retries are deduplicated on the phone. Paused recognition is not started.

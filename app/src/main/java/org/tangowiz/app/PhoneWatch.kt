@@ -78,12 +78,13 @@ object PhoneWatch {
    var ok=true;var error=""
    try{when(kind){
     "state"->Unit
+    "reset"->{check(LiveState.current.listening){"Start identification first"};main.post{if(LiveState.current.listening)context.startService(Intent(context,RecognitionService::class.java).setAction(RecognitionService.RESET))}}
     "history"->{val rows=RecordingHistory.consecutive(Store(context).history()).takeLast(40);val safe=JSONArray();for(row in rows){safe.put(JSONObject().put("time",row.optString("time")).put("orchestra",Candidate.fromJson(row).display("orchestra").take(500)).put("title",Candidate.fromJson(row).display("title").take(500)).put("singer",Candidate.fromJson(row).display("singer").take(300)).put("year",Candidate.fromJson(row).display("year")).put("confidence_score",row.optInt("confidence_score")))};send(node,WearMessages.HISTORY_PATH,JSONObject().put("rows",safe))}
     "set"->{state();check(request.has("expectedRevision")&&request.getLong("expectedRevision")==revision()){"Settings changed; refresh and try again"};applyValues(request)}
     else->kotlin.error("Unknown watch command")
    }}catch(e:Exception){ok=false;error=e.message?:"Command failed"}
    val ack=JSONObject().put("requestId",id).put("ok",ok).put("state",state());if(error.isNotEmpty())ack.put("error",error)
-   if(kind=="set"){cache.put(id,JSONObject().put("signature",signature).put("ack",ack));while(cache.length()>64)cache.remove(cache.keys().next());prefs().edit().putString("handled",cache.toString()).commit()}
+   if(kind=="set"||kind=="reset"){cache.put(id,JSONObject().put("signature",signature).put("ack",ack));while(cache.length()>64)cache.remove(cache.keys().next());prefs().edit().putString("handled",cache.toString()).commit()}
    send(node,WearMessages.ACK_PATH,ack);scheduleState(true)
   }.onFailure{e->runCatching{val id=JSONObject(String(raw,Charsets.UTF_8)).optString("requestId");send(node,WearMessages.ACK_PATH,JSONObject().put("requestId",id).put("ok",false).put("error",e.message?:"Command failed").put("state",state()))}}
  }}

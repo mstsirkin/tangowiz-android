@@ -60,3 +60,9 @@ This passed on Wear OS 5 (API 34), followed by a real paired known-audio recogni
 With display mode enabled, microphone mode also checks that Close display leaves actual capture/listening active. Separately verify the phone receives a WAV while Dozing.
 
 The paired 0.5.1 microphone/display check passed: capture remained active for 20 seconds while Dozing, Close display left microphone capture and identification running, and the phone received 21.5 seconds of mono 8 kHz WAV audio.
+
+## Manual reset (0.5.5)
+
+The phone runner supports `-e mode manual_reset`. This uses the real recognition engine and a synthetic watch-input queue with the private Tanturi fixture; it does not exercise physical Wear transport. It checks the visible phone reset action, exactly 16,000 retained 8 kHz samples, unchanged saved history, one model/index load across resets, continued recognition and an identical watch command retry applied once. Watch orchestra tap handlers compile into both controls and ambient display; the new physical-watch gesture/transport path still needs a device trial.
+
+Recorded result: phone 0.5.5 integration passed with 16,000 samples retained, the actual phone reset button exercised, history preserved, one model/index load, duplicate watch-command retry applied once, and Ricardo Tanturi recognized after reset. Buffer unit tests (three cases) and both release builds passed. This is synthetic watch-input/command integration, not a new paired physical-watch transport test.

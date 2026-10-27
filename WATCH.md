@@ -51,3 +51,7 @@ On Wear OS 5+, the Ongoing Activity supports staying visible past the return-to-
 ## Immediate confidence transitions (phone 0.5.2)
 
 When the leading result crosses from tentative to the existing strong threshold (raw confidence score >=70, while listening without an error), the phone bypasses the configured result-update interval. It sends the current state immediately over MessageClient and updates the persistent DataItem with urgent priority, even if a recent tentative update was just sent. Continued strong results use the normal interval; a fall and recovery can trigger another immediate push. Scores, matcher thresholds, history and the watch protocol are unchanged. This affects phone scheduling, not Wear OS ambient or complication redraw limits. Use the existing watch 0.5.1 and face 0.5.0.
+
+## Manual reset (phone/watch 0.5.5)
+
+Tap the current orchestra in the watch companion or full-screen display to reset matching with the latest two seconds of captured audio. There is no extra watch button. The phone has a visible ↺ button beside Pause/Resume. Reset does not erase saved history, reload the recognition model/index, or change microphone selection. Existing accumulated matches and old speed-fallback results are discarded. Audio/debugging continues into a new session with a two-second overlap. Watch commands use a unique request ID and cached acknowledgements so transport retries do not repeatedly reset fresh evidence. Paused identification is not started by reset. Both updated APKs are required; the WFF face and catalog are unchanged.

@@ -21,6 +21,7 @@ class RecognitionService:Service(){
  companion object {
   const val RESUME="RESUME"
   const val RESTART="RESTART"
+  const val RESET="RESET"
   const val PAUSE="PAUSE"
   const val EXIT="EXIT"
   const val EXIT_ACTIVITY="org.tangowiz.app.EXIT_ACTIVITY"
@@ -32,6 +33,8 @@ class RecognitionService:Service(){
  @Volatile private var recorder:AudioRecord?=null
  @Volatile private var captureThread:Thread?=null
  private var owner:Thread?=null
+ @Volatile private var recentAudio:RecentAudioWindow?=null
+ private var resetLookback:ShortArray?=null
  private var wake:PowerManager.WakeLock?=null
  private val io=Executors.newSingleThreadExecutor()
  private lateinit var store:Store
@@ -67,9 +70,20 @@ class RecognitionService:Service(){
   when(intent?.action){
    EXIT->{requestExit();return START_NOT_STICKY}
    "RELOAD"->{PhoneWatch.engineReady=false;synchronized(stateLock){desired=false;generation++;reloadPending=true;stateLock.notifyAll()};stopCapture();releaseWake();LiveState.publish(RecognitionState(resident=true,phase="Ⅱ"));event("resource_reload_requested")}
+   RESET->{
+    synchronized(stateLock){
+     if(!desired||exiting)return START_NOT_STICKY
+     resetLookback=recentAudio?.snapshot()?:ShortArray(0)
+     generation++;stopCapture();stateLock.notifyAll()
+     WatchAudioInput.discardBuffered()
+     LiveState.publish(RecognitionState(listening=true,resident=true,phase="…"))
+     event("manual_reset_requested",JSONObject().put("retained_samples",resetLookback!!.size))
+    }
+    PhoneWatch.changed()
+   }
    RESTART->{if(intent.getBooleanExtra("automatic_input_restart",false)&&!desired)return START_NOT_STICKY;synchronized(stateLock){desired=true;generation++;stateLock.notifyAll()};stopCapture();LiveState.publish(RecognitionState(listening=true,resident=true,phase="…",error=intent.getStringExtra("input_error")?:""));event("input_restart_requested")}
    PAUSE,"STOP"->{
-    synchronized(stateLock){desired=false;generation++;stateLock.notifyAll()}
+    synchronized(stateLock){desired=false;generation++;resetLookback=null;recentAudio=null;stateLock.notifyAll()}
     stopCapture();WatchAudioInput.close();PhoneWatch.stopRemoteCapture();releaseWake();LiveState.publish(RecognitionState(resident=true,phase="Ⅱ"));event("pause_requested")
    }
    else->{
@@ -125,11 +139,15 @@ class RecognitionService:Service(){
    }
    recorder=ar
    val queue=ArrayBlockingQueue<ShortArray>(if(usingWatch)8 else 240)
+   val recent=RecentAudioWindow(16000)
+   val retained=synchronized(stateLock){if(!active(token))return;recentAudio=recent;resetLookback.also{resetLookback=null}}?:ShortArray(0)
+   for(offset in retained.indices step 4000){val block=retained.copyOfRange(offset,minOf(offset+4000,retained.size));queue.add(block);recent.append(block)}
+   event("manual_reset_seed",JSONObject().put("retained_samples",retained.size))
    synchronized(stateLock){
     if(!active(token)){ar?.release();recorder=null;return}
     ar?.startRecording();wake=(getSystemService(POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"TangoWiz:Recognition").apply{acquire()}
    }
-   event("capture_started",JSONObject().put("source",if(usingWatch)"watch" else "phone"));val captured=java.util.concurrent.atomic.AtomicLong(0)
+   event("capture_started",JSONObject().put("source",if(usingWatch)"watch" else "phone"));val captured=java.util.concurrent.atomic.AtomicLong(retained.size.toLong())
    captureThread=Thread({
     android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO)
     try{
@@ -146,7 +164,8 @@ class RecognitionService:Service(){
        while(n<block.size&&active(token)){val got=ar!!.read(block,n,block.size-n,AudioRecord.READ_BLOCKING);if(got<0)throw IOException("Microphone error $got");n+=got}
        if(n!=block.size)continue
       }
-      queue.put(block);captured.addAndGet(block.size.toLong())
+      if(!active(token))break
+      recent.append(block);queue.put(block);captured.addAndGet(block.size.toLong())
      }
     }catch(e:Exception){if(active(token)){synchronized(stateLock){if(active(token)){desired=false;generation++}};LiveState.publish(RecognitionState(resident=true,error=e.message?:"Audio capture failed"))}}
    },"tango-audio").apply{start()}

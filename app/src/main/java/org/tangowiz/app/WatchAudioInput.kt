@@ -21,6 +21,7 @@ object WatchAudioInput {
  @Volatile var connected=false;private set
  private val pending=java.util.concurrent.Semaphore(2)
  private val deadlines=java.util.concurrent.Executors.newSingleThreadScheduledExecutor{r->Thread(r,"watch-channel-deadline").apply{isDaemon=true}}
+ @Synchronized fun discardBuffered(){queue.clear()}
  fun take():Block?{val packet=queue.poll(1,TimeUnit.SECONDS)?:return null;return synchronized(this){packet.takeIf{it.epoch==generation}}}
  @Synchronized fun returnFirst(block:Block){if(block.epoch==generation)check(queue.offerFirst(block)){"Watch audio queue overflow"}}
  @Synchronized fun close(){generation++;connected=false;runCatching{input?.close()};input=null;val ctx=context;val old=channel;channel=null;if(ctx!=null&&old!=null)Wearable.getChannelClient(ctx).close(old);queue.clear()}
