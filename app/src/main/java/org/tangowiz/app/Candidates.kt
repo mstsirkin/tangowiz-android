@@ -24,10 +24,16 @@ data class Candidate(val id:String,val orchestra:String,val title:String,val sin
 object MetadataLabels{
  val fields=listOf("orchestra","title","singer","year")
  private fun folded(value:String)=java.text.Normalizer.normalize(value,java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}+"),"").lowercase(java.util.Locale.ROOT).replace(Regex("[^\\p{L}\\p{N}]+")," ").trim()
+ private fun shortOrchestra(value:String):String {
+  val suffix=Regex("(?iu)\\s+y\\s+su\\s+orq(?:uesta)?\\.?\\s*(?:(?:t[ií]pica|tip)\\.?)?\\s*$")
+  val prefix=Regex("(?iu)^(?:orquesta(?:\\s+t[ií]pica)?|orq\\.?(?:\\s+tip\\.?)?)\\s+")
+  return value.replace(suffix, "").replace(prefix, "").trim().ifEmpty{value}
+ }
  fun orchestraKey(candidate:Candidate):String?{val labels=resolve(candidate,"orchestra");if(labels.size!=1)return null;val label=labels.single();val key=folded(label).replace(Regex("^(?:orquesta(?: tipica)?|orq(?: tipica)?) +"),"");return key.takeIf{it.isNotEmpty()&&!label.contains('?')&&it !in setOf("unknown","unidentified","desconocido","desconocida","sin identificar","no identificado","not known")}}
  private fun quality(value:String)=value.count{it.code>127}*4+(if(value.any{it.isLowerCase()}&&value.any{it.isUpperCase()})2 else 0)
  private fun equivalent(values:List<String>,field:String):List<String>{val choices=linkedMapOf<String,String>();for(v in values){val key=if(field=="orchestra")folded(v).replace(Regex("^(?:orquesta(?: tipica)?|orq(?: tipica)?) +"),"") else folded(v);val old=choices[key];if(old==null||quality(v)>quality(old))choices[key]=v};return choices.values.toList()}
  fun resolve(candidate:Candidate,field:String):List<String>{var values=candidate.labels(field)
+  if(field=="orchestra")values=values.map(::shortOrchestra)
   if(field=="year")return preciseDates(values)
   if(field=="title"){
    val creditWords=(candidate.labels("orchestra")+candidate.labels("singer")).flatMap{folded(it).split(' ')}.filter{it.isNotBlank()}.toSet()
