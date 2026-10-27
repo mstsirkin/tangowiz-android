@@ -19,7 +19,7 @@ import java.time.format.DateTimeFormatter
 class AmbientDisplayActivity:ComponentActivity(){
  private lateinit var content:LinearLayout
  private lateinit var clock:TextView
- private lateinit var orchestra:TextView
+ private lateinit var orchestra:OrchestraNameView
  private lateinit var song:TextView
  private lateinit var status:TextView
  private lateinit var percent:TextView
@@ -47,7 +47,7 @@ class AmbientDisplayActivity:ComponentActivity(){
   window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
   content=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(22),dp(18),dp(22),dp(16));setBackgroundColor(Color.BLACK)}
   clock=label(12f).apply{contentDescription="Time"};content.addView(clock,LinearLayout.LayoutParams(-1,dp(18)))
-  orchestra=label(36f).apply{setOnClickListener{if(!ambient)WatchLink.reset()};contentDescription="Orchestra; tap to reset recognition, keeping two seconds";maxLines=2;setTypeface(null,Typeface.BOLD);setAutoSizeTextTypeUniformWithConfiguration(18,40,1,TypedValue.COMPLEX_UNIT_SP)};content.addView(orchestra,LinearLayout.LayoutParams(-1,0,2f))
+  orchestra=OrchestraNameView(this).apply{setTextColor(Color.WHITE);setOnClickListener{if(!ambient)WatchLink.reset()};contentDescription="Orchestra; tap to reset recognition, keeping two seconds";maxLines=2;setTypeface(null,Typeface.BOLD);setAutoSizeTextTypeUniformWithConfiguration(18,40,1,TypedValue.COMPLEX_UNIT_SP)};content.addView(orchestra,LinearLayout.LayoutParams(-1,0,2f))
   song=label(18f).apply{maxLines=2;setAutoSizeTextTypeUniformWithConfiguration(12,20,1,TypedValue.COMPLEX_UNIT_SP)};content.addView(song,LinearLayout.LayoutParams(-1,0,1f))
   status=label(10f).apply{maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END};content.addView(status,LinearLayout.LayoutParams(-1,dp(16)))
   footer=LinearLayout(this).apply{gravity=Gravity.CENTER}
@@ -71,7 +71,7 @@ class AmbientDisplayActivity:ComponentActivity(){
   if(!::content.isInitialized)return
   clock.text=LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
   val stale=WatchCache.stale();val name=uncertain(WatchCache.orchestra())
-  orchestra.text=if(stale&&name!="—"&&!name.startsWith("?"))"? $name" else name
+  orchestra.showName(if(stale&&name!="—"&&!name.startsWith("?"))"? $name" else name)
   song.text=uncertain(WatchCache.song())
   val best=WatchCache.state.optJSONObject("best");val confidence=best?.optInt("percent")?.coerceIn(0,100)
   percent.text=confidence?.let{"$it%"}?:""

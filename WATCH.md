@@ -55,3 +55,9 @@ When the leading result crosses from tentative to the existing strong threshold 
 ## Manual reset (phone/watch 0.5.5)
 
 Tap the current orchestra in the watch companion or full-screen display to reset matching with the latest two seconds of captured audio. There is no extra watch button. The phone has a visible ↺ button beside Pause/Resume. Reset does not erase saved history, reload the recognition model/index, or change microphone selection. Existing accumulated matches and old speed-fallback results are discarded. Audio/debugging continues into a new session with a two-second overlap. Watch commands use a unique request ID and cached acknowledgements so transport retries do not repeatedly reset fresh evidence. Paused identification is not started by reset. Both updated APKs are required; the WFF face and catalog are unchanged.
+
+## Orchestra keyword display (watch 0.5.7)
+
+The watch bundles a ~22 KB `orchestra-keywords.json` display-preference table (447 label variants), loaded once. No recognition/catalog data or wire protocol changes are needed. Existing phone versions remain compatible; deferred protocol negotiation is still reserved for a future actual interface change.
+
+The companion and full-screen display measure the keyword and remaining name against their two-line rectangle. Shorter recognizable names, including multiword surnames such as Di Sarli, can be emphasized while context becomes smaller. Miguel Caló uses the approved Caló preference; Roberto Caló stays distinct. Shared surnames requiring a whole qualified name retain the original uniform style when there is nothing to shorten. La Juan D’Arienzo appends LJD while retaining the full original name. Unknown, ambiguous, unsupported or nonfitting hints use the original autosized text. Recognition identities, saved history, full cached names, and reset-on-orchestra-tap remain unchanged. The WFF face is unchanged.
