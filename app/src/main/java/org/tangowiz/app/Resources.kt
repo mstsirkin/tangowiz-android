@@ -39,9 +39,10 @@ data class ResourceManifest(val version:String,val archiveUrl:String,val archive
     val version=json.getString("bundleVersion");require(version.isNotBlank()&&version.length<=128)
     fun file(j:JSONObject,max:Long):ResourceFile{val size=j.getLong("bytes");val hash=j.getString("sha256").lowercase();require(size in 1..max&&hash.matches(Regex("[0-9a-f]{64}")));return ResourceFile(size,hash)}
     val a=json.getJSONObject("archive");val url=a.getString("url");require(URL(url).protocol=="https"||URL(url).host in setOf("127.0.0.1","localhost"))
-    val f=json.getJSONObject("files");val required=setOf("catalog.bin","nmfp.tflite");val names=f.keys().asSequence().toSet();require(names.containsAll(required)&&names.all{it in required||it=="orchestra-keywords.json"})
+    val f=json.getJSONObject("files");val required=setOf("catalog.bin","nmfp.tflite");val names=f.keys().asSequence().toSet();require(names.containsAll(required)&&names.all{it in required||it in setOf("orchestra-keywords.json",ConfidenceCalibration.FILE_NAME)})
     val files=mutableMapOf("catalog.bin" to file(f.getJSONObject("catalog.bin"),8L*1024*1024*1024),"nmfp.tflite" to file(f.getJSONObject("nmfp.tflite"),512L*1024*1024))
     if(f.has("orchestra-keywords.json"))files["orchestra-keywords.json"]=file(f.getJSONObject("orchestra-keywords.json"),262144)
+    if(f.has(ConfidenceCalibration.FILE_NAME))files[ConfidenceCalibration.FILE_NAME]=file(f.getJSONObject(ConfidenceCalibration.FILE_NAME),4096)
     return ResourceManifest(version,url,file(a,9L*1024*1024*1024),files,json,format)
    }catch(e:AppUpdateRequired){throw e}catch(e:Exception){throw AppUpdateRequired("The resource manifest is incompatible; update the app")}
   }
@@ -93,7 +94,7 @@ class ResourceStore(context:Context,private val transport:ResourceTransport=Http
  private fun write(file:File,j:JSONObject){val a=AtomicFile(file);val out=a.startWrite();try{out.write(j.toString().toByteArray());out.fd.sync();a.finishWrite(out)}catch(e:Exception){a.failWrite(out);throw e}}
  fun current():BundleSnapshot?=synchronized(ResourcePins.lock){runCatching{
   val j=pointer.openRead().use{JSONObject(it.bufferedReader().readText())};val m=ResourceManifest.parse(j);val directory=j.getString("directory");require(directory.matches(Regex("bundle-[a-f0-9]{64}-[a-f0-9-]{36}")));val dir=File(root,directory)
-  require(File(dir,"verified.json").isFile&&m.files.filterKeys{it!="orchestra-keywords.json"}.all{(n,v)->File(dir,n).isFile&&File(dir,n).length()==v.bytes});BundleSnapshot(dir,m.version,m.archive.sha256,m.formatVersion)
+  require(File(dir,"verified.json").isFile&&m.files.filterKeys{it in setOf("catalog.bin","nmfp.tflite")}.all{(n,v)->File(dir,n).isFile&&File(dir,n).length()==v.bytes});BundleSnapshot(dir,m.version,m.archive.sha256,m.formatVersion)
  }.getOrNull()}
  fun pinCurrent():BundleSnapshot?=synchronized(ResourcePins.lock){current()?.also{val key=it.directory.absolutePath;ResourcePins.held[key]=(ResourcePins.held[key]?:0)+1}}
  fun cleanupUnused(){synchronized(ResourcePins.lock){val active=current()?.directory?.absolutePath;root.listFiles()?.filter{it.isDirectory&&it.name.startsWith("bundle-")&&it.absolutePath!=active&&it.absolutePath !in ResourcePins.held}?.forEach{it.deleteRecursively()}}}
@@ -132,6 +133,7 @@ class ResourceStore(context:Context,private val transport:ResourceTransport=Http
     requireDownload(bytes==expected.bytes&&digest.digest().joinToString(""){"%02x".format(it)}==expected.sha256,"Resource file failed verification");zip.closeEntry()
    }};requireDownload(seen==m.files.keys,"Incomplete resource ZIP")
    if(m.files.containsKey("orchestra-keywords.json")){try{CatalogKeywords.decode(File(stage,"orchestra-keywords.json").readBytes())}catch(e:Exception){throw IOException("Orchestra display data is incompatible; update app or retry",e)}}
+   if(m.files.containsKey(ConfidenceCalibration.FILE_NAME)){try{ConfidenceCalibration.decode(File(stage,ConfidenceCalibration.FILE_NAME).readBytes())}catch(e:Exception){throw IOException("Confidence display data is incompatible; update app or retry",e)}}
    try{validate(BundleSnapshot(stage,m.version,m.archive.sha256,m.formatVersion))}catch(e:Exception){throw AppUpdateRequired("These recognition resources need a newer app")}
    write(File(stage,"verified.json"),m.json);val target=File(root,"bundle-${m.archive.sha256}-${UUID.randomUUID()}")
    synchronized(ResourcePins.lock){

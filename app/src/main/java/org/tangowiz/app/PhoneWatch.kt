@@ -35,20 +35,20 @@ object PhoneWatch {
  fun init(ctx:Context){synchronized(this){if(initialized)return;context=ctx.applicationContext;initialized=true;LiveState.listeners.add{scheduleState()}}}
  private fun prefs()=context.getSharedPreferences("watch-link",0)
  private fun revision()=prefs().getLong("revision",0)
- private fun candidate(c:Candidate?):Any {
+ private fun candidate(c:Candidate?,bundle:BundleSnapshot?,calibration:ConfidenceCalibration.Parameters):Any {
   c?:return JSONObject.NULL
-  val result=JSONObject().put("id",c.id).put("orchestra",c.display("orchestra").take(500)).put("title",c.display("title").take(1000)).put("singer",c.display("singer").take(300)).put("year",c.display("year").take(100)).put("score",c.score).put("percent",(c.confidence*2).coerceIn(0,100))
-  CatalogKeywords.hint(ResourceStore(context).current(),c.display("orchestra"))?.let{result.put("orchestraKeyword",it.json())}
+  val result=JSONObject().put("id",c.id).put("orchestra",c.display("orchestra").take(500)).put("title",c.display("title").take(1000)).put("singer",c.display("singer").take(300)).put("year",c.display("year").take(100)).put("score",c.score).put("percent",calibration.percent(c.score))
+  CatalogKeywords.hint(bundle,c.display("orchestra"))?.let{result.put("orchestraKeyword",it.json())}
   return result
  }
  @Synchronized fun state():JSONObject {
-  val store=Store(context);val live=LiveState.current
+  val store=Store(context);val live=LiveState.current;val bundle=ResourceStore(context).current();val calibration=ConfidenceCalibration.parameters(bundle)
   val signature="${pendingListening?:live.listening}|${store.microphone}|${store.audio}|${store.timing}|${store.watchUpdateInterval}"
   if(prefs().getString("control_signature","")!=signature)prefs().edit().putString("control_signature",signature).putLong("revision",revision()+1).commit()
   return JSONObject().put("protocol",WearProtocol.VERSION).put("supportedProtocols",JSONArray(listOf(WearProtocol.VERSION))).put("capabilities",JSONArray(listOf(WearProtocol.ORCHESTRA_KEYWORD))).put("revision",revision()).put("listening",pendingListening?:live.listening)
    .put("microphone",store.microphone).put("audio",store.audio).put("timing",store.timing).put("updateIntervalMs",store.watchUpdateInterval)
    .put("phase",if(pendingListening==true&&!live.listening)"Starting phone…" else if(live.listening&&store.microphone=="watch"&&!WatchAudioInput.connected)"Waiting for watch audio" else live.phase)
-   .put("ready",engineReady&&live.listening).put("error",live.error).put("best",candidate(live.best)).put("second",candidate(live.second)).put("updatedAt",System.currentTimeMillis())
+   .put("ready",engineReady&&live.listening).put("error",live.error).put("best",candidate(live.best,bundle,calibration)).put("second",candidate(live.second,bundle,calibration)).put("updatedAt",System.currentTimeMillis())
  }
  fun peerConnected(ctx:Context){init(ctx);captureRequested=false;changed()}
  fun changed(){if(initialized)scheduleState(true)}
