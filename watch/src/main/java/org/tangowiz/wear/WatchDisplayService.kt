@@ -37,7 +37,7 @@ class WatchDisplayService:Service(){
   !WatchCache.connected->"Phone disconnected · cached"
   !WatchCache.state.optBoolean("listening")->"Identification paused"
   WatchCache.stale()->"Cached result"
-  else->listOf(WatchCache.orchestra(),WatchCache.song()).filter{it.isNotBlank()&&it!="—"}.joinToString(" · ").ifBlank{"Listening…"}.take(200)
+  else->listOf(WatchCache.orchestra(),WatchCache.singer(),WatchCache.song()).filter{it.isNotBlank()&&it!="—"}.joinToString(" · ").ifBlank{"Listening…"}.take(200)
  }
  private fun notification():Notification{
   lastText=description()

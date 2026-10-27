@@ -8,6 +8,8 @@ The existing downloader validates the archive and every declared member, includi
 
 The phone caches the table by resource generation and optional file state and matches full display credits conservatively. It sends only the current candidates' hints: `orchestraKeyword: {text: ..., placement: "in_name" | "append"}`. No table is transferred to or shipped in the watch APK. A cached state may retain its individual hint until a newer state replaces it.
 
+The watch's optional **Short orchestra name** setting displays just the supplied preferred keyword or alias. Without that setting the existing emphasis layout is retained. Full orchestra credits remain in cached state, history and accessibility descriptions; the setting does not alter the resource table or wire protocol.
+
 ## Protocol compatibility
 
 State and command headers advertise `protocol: 1`, `supportedProtocols: [1]` and `capabilities: ["orchestra-keyword-v1"]`. Missing headers mean legacy protocol 1 with no optional keyword capability. Existing commands/settings revisions/audio framing retain their meanings.

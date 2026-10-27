@@ -16,6 +16,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.tangowiz.link.WearMessages
 import org.tangowiz.link.WearProtocol
+import org.tangowiz.link.DisplayNames
 import java.util.UUID
 import java.util.concurrent.*
 import java.util.concurrent.CopyOnWriteArrayList
@@ -33,10 +34,14 @@ object WatchCache {
  var pendingCapture:Boolean get()=context.getSharedPreferences("watch-cache",0).getBoolean("pending_capture",false);set(value){context.getSharedPreferences("watch-cache",0).edit().putBoolean("pending_capture",value).apply()}
  fun captureNotice(){val manager=context.getSystemService(NotificationManager::class.java);manager.createNotificationChannel(NotificationChannel("watch-actions","Watch actions",NotificationManager.IMPORTANCE_DEFAULT));val open=PendingIntent.getActivity(context,11,Intent(context,WatchActivity::class.java).putExtra("requestCapture",true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT);manager.notify(11,Notification.Builder(context,"watch-actions").setSmallIcon(android.R.drawable.ic_btn_speak_now).setContentTitle("TangoWiz watch microphone").setContentText("Tap to allow and start watch capture").setContentIntent(open).setAutoCancel(true).build())}
  fun stale()=!protocolCompatible||!connected||System.currentTimeMillis()-state.optLong("updatedAt",0)>maxOf(30000,state.optLong("updateIntervalMs",5000)*3)
- fun keyword():OrchestraKeywords.Hint?{if(!protocolCompatible)return null;val caps=state.optJSONArray("capabilities")?:return null;if(!(0 until caps.length()).any{caps.optString(it)==WearProtocol.ORCHESTRA_KEYWORD})return null;return OrchestraKeywords.fromMessage(state.optJSONObject("best")?.optJSONObject("orchestraKeyword"))}
- fun orchestra()=state.optJSONObject("best")?.optString("orchestra")?.ifBlank{"?"}?:"—"
+ private fun rawKeyword():OrchestraKeywords.Hint?{if(!protocolCompatible)return null;val caps=state.optJSONArray("capabilities")?:return null;if(!(0 until caps.length()).any{caps.optString(it)==WearProtocol.ORCHESTRA_KEYWORD})return null;return OrchestraKeywords.fromMessage(state.optJSONObject("best")?.optJSONObject("orchestraKeyword"))}
+ fun keyword()=rawKeyword().takeIf{orchestra()==fullOrchestra()}
+ fun fullOrchestra()=state.optJSONObject("best")?.optString("orchestra")?.ifBlank{"?"}?:"—"
+ fun orchestra():String{val full=fullOrchestra();val preferred=rawKeyword()?.takeIf{it.append||OrchestraKeywords.span(full,it.keyword)!=null}?.keyword;return DisplayNames.orchestra(full,preferred,DisplayPreferences.shortOrchestra)}
+ fun fullSinger()=state.optJSONObject("best")?.optString("singer")?:""
+ fun singer()=if(DisplayPreferences.showSinger)DisplayNames.singer(fullSinger(),DisplayPreferences.singerFirstName) else ""
  fun song()=state.optJSONObject("best")?.optString("title")?:""
- @Synchronized fun changed(){listeners.forEach{it()};runCatching{TileService.getUpdater(context).requestUpdate(TangoTileService::class.java)};val next="${orchestra()}\n${song()}\n${stale()}";val now=System.currentTimeMillis();if(next!=faceText||now-faceRequestedAt>=300000){faceText=next;faceRequestedAt=now;runCatching{ComplicationDataSourceUpdateRequester.create(context,ComponentName(context,TangoComplicationService::class.java)).requestUpdateAll()}}}
+ @Synchronized fun changed(){listeners.forEach{it()};runCatching{TileService.getUpdater(context).requestUpdate(TangoTileService::class.java)};val next="${orchestra()}\n${singer()}\n${song()}\n${stale()}";val now=System.currentTimeMillis();if(next!=faceText||now-faceRequestedAt>=300000){faceText=next;faceRequestedAt=now;runCatching{ComplicationDataSourceUpdateRequester.create(context,ComponentName(context,TangoComplicationService::class.java)).requestUpdateAll()}}}
  fun acceptHistory(value:JSONArray){history=value;context.getSharedPreferences("watch-cache",0).edit().putString("history",value.toString()).apply();changed()}
 }
 object WatchLink {

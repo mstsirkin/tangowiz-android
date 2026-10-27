@@ -37,18 +37,19 @@ class OrchestraNameView(ctx:Context):TextView(ctx){
  var keywordMaxSp=46
  var contextMaxSp=26
  private var name=""
+ private var fullName=""
  private var hint:OrchestraKeywords.Hint?=null
  private var renderedKey=""
  private var rendering=false
  var emphasized=false;private set
  init{gravity=Gravity.CENTER;includeFontPadding=false;maxLines=2;setTypeface(null,Typeface.BOLD)}
- fun showName(value:String,keyword:OrchestraKeywords.Hint?=null){name=value;hint=keyword;fitName()}
+ fun showName(value:String,keyword:OrchestraKeywords.Hint?=null,fullCredit:String=value){name=value;fullName=fullCredit;hint=keyword;fitName()}
  override fun onSizeChanged(w:Int,h:Int,oldw:Int,oldh:Int){super.onSizeChanged(w,h,oldw,oldh);fitName()}
  private data class Choice(val text:SpannableString,val size:Int)
  private fun fitName(){
   if(rendering)return
   val width=width-compoundPaddingLeft-compoundPaddingRight;val height=height-compoundPaddingTop-compoundPaddingBottom
-  val cache="$name|$hint|$width|$height|$normalMaxSp|$keywordMaxSp|$contextMaxSp|${resources.configuration.fontScale}"
+  val cache="$name|$fullName|$hint|$width|$height|$normalMaxSp|$keywordMaxSp|$contextMaxSp|${resources.configuration.fontScale}"
   if(cache==renderedKey)return
   rendering=true
   try{
@@ -82,7 +83,8 @@ class OrchestraNameView(ctx:Context):TextView(ctx){
    emphasized=choice!=null
    if(choice!=null){setAutoSizeTextTypeWithDefaults(AUTO_SIZE_TEXT_TYPE_NONE);setTextSize(TypedValue.COMPLEX_UNIT_SP,choice.size.toFloat());text=choice.text}
    else{setAutoSizeTextTypeUniformWithConfiguration(18,normalMaxSp,1,TypedValue.COMPLEX_UNIT_SP);text=name}
-   contentDescription=name+(if(hint?.append==true&&emphasized)", ${hint.keyword}" else "")+"; tap to reset recognition, keeping two seconds"
+   val accessibleName=if(name.startsWith("? ")&&!fullName.startsWith("? "))"? $fullName" else fullName
+   contentDescription=accessibleName+(if(hint?.append==true&&emphasized)", ${hint.keyword}" else "")+"; tap to reset recognition, keeping two seconds"
    renderedKey=cache
   }finally{rendering=false}
  }

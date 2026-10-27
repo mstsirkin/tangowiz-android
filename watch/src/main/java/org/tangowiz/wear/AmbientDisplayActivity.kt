@@ -20,6 +20,7 @@ class AmbientDisplayActivity:ComponentActivity(){
  private lateinit var content:LinearLayout
  private lateinit var clock:TextView
  private lateinit var orchestra:OrchestraNameView
+ private lateinit var singer:SingerNameView
  private lateinit var song:TextView
  private lateinit var status:TextView
  private lateinit var percent:TextView
@@ -48,6 +49,7 @@ class AmbientDisplayActivity:ComponentActivity(){
   content=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(22),dp(18),dp(22),dp(16));setBackgroundColor(Color.BLACK)}
   clock=label(12f).apply{contentDescription="Time"};content.addView(clock,LinearLayout.LayoutParams(-1,dp(18)))
   orchestra=OrchestraNameView(this).apply{setTextColor(Color.WHITE);setOnClickListener{if(!ambient)WatchLink.reset()};contentDescription="Orchestra; tap to reset recognition, keeping two seconds";maxLines=2;setTypeface(null,Typeface.BOLD);setAutoSizeTextTypeUniformWithConfiguration(18,40,1,TypedValue.COMPLEX_UNIT_SP)};content.addView(orchestra,LinearLayout.LayoutParams(-1,0,2f))
+  singer=SingerNameView(this).apply{setTextColor(Color.LTGRAY);visibility=View.GONE};content.addView(singer,LinearLayout.LayoutParams(-1,dp(26)))
   song=label(18f).apply{maxLines=2;setAutoSizeTextTypeUniformWithConfiguration(12,20,1,TypedValue.COMPLEX_UNIT_SP)};content.addView(song,LinearLayout.LayoutParams(-1,0,1f))
   status=label(10f).apply{maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END};content.addView(status,LinearLayout.LayoutParams(-1,dp(16)))
   footer=LinearLayout(this).apply{gravity=Gravity.CENTER}
@@ -71,7 +73,9 @@ class AmbientDisplayActivity:ComponentActivity(){
   if(!::content.isInitialized)return
   clock.text=LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
   val stale=WatchCache.stale();val name=uncertain(WatchCache.orchestra())
-  orchestra.showName(if(stale&&name!="—"&&!name.startsWith("?"))"? $name" else name,WatchCache.keyword())
+  orchestra.showName(if(stale&&name!="—"&&!name.startsWith("?"))"? $name" else name,WatchCache.keyword(),WatchCache.fullOrchestra())
+  singer.visibility=if(WatchCache.singer().isBlank())View.GONE else View.VISIBLE
+  singer.showCredit(WatchCache.fullSinger(),DisplayPreferences.singerFirstName);singer.isClickable=!ambient
   song.text=uncertain(WatchCache.song())
   val best=WatchCache.state.optJSONObject("best");val confidence=best?.optInt("percent")?.coerceIn(0,100)
   percent.text=confidence?.let{"$it%"}?:""
@@ -87,7 +91,7 @@ class AmbientDisplayActivity:ComponentActivity(){
   footer.visibility=if(ambient)View.INVISIBLE else View.VISIBLE
   val color=if(ambient||stale)Color.LTGRAY else Color.rgb(160,225,190)
   orchestra.setTextColor(color);percent.setTextColor(color)
-  for(view in listOf(clock,orchestra,song,status,percent))view.paint.isAntiAlias=!(ambient&&lowBit)
+  for(view in listOf(clock,orchestra,singer,song,status,percent))view.paint.isAntiAlias=!(ambient&&lowBit)
   if(ambient&&burnIn){val tick=System.currentTimeMillis()/60000;content.translationX=dp((tick%5).toInt()-2).toFloat();content.translationY=dp(((tick/5)%5).toInt()-2).toFloat()}else{content.translationX=0f;content.translationY=0f}
  }
 }
