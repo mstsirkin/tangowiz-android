@@ -11,6 +11,7 @@ import com.google.android.gms.wearable.Wearable
 import org.json.JSONArray
 import org.json.JSONObject
 import org.tangowiz.link.WearMessages
+import org.tangowiz.link.WearProtocol
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -21,6 +22,7 @@ object PhoneWatch {
  private val network=Executors.newSingleThreadExecutor()
  private val stateQueued=java.util.concurrent.atomic.AtomicBoolean(false)
  private val stateDirty=java.util.concurrent.atomic.AtomicBoolean(false)
+ private val peerKeywords=java.util.concurrent.ConcurrentHashMap<String,Boolean>()
  @Volatile private var captureRequested=false
  private val main=Handler(Looper.getMainLooper())
  @Volatile private var initialized=false
@@ -33,12 +35,17 @@ object PhoneWatch {
  fun init(ctx:Context){synchronized(this){if(initialized)return;context=ctx.applicationContext;initialized=true;LiveState.listeners.add{scheduleState()}}}
  private fun prefs()=context.getSharedPreferences("watch-link",0)
  private fun revision()=prefs().getLong("revision",0)
- private fun candidate(c:Candidate?):Any = c?.let{JSONObject().put("id",it.id).put("orchestra",it.display("orchestra").take(500)).put("title",it.display("title").take(1000)).put("singer",it.display("singer").take(300)).put("year",it.display("year").take(100)).put("score",it.score).put("percent",(it.confidence*2).coerceIn(0,100))}?:JSONObject.NULL
+ private fun candidate(c:Candidate?):Any {
+  c?:return JSONObject.NULL
+  val result=JSONObject().put("id",c.id).put("orchestra",c.display("orchestra").take(500)).put("title",c.display("title").take(1000)).put("singer",c.display("singer").take(300)).put("year",c.display("year").take(100)).put("score",c.score).put("percent",(c.confidence*2).coerceIn(0,100))
+  CatalogKeywords.hint(ResourceStore(context).current(),c.display("orchestra"))?.let{result.put("orchestraKeyword",it.json())}
+  return result
+ }
  @Synchronized fun state():JSONObject {
   val store=Store(context);val live=LiveState.current
   val signature="${pendingListening?:live.listening}|${store.microphone}|${store.audio}|${store.timing}|${store.watchUpdateInterval}"
   if(prefs().getString("control_signature","")!=signature)prefs().edit().putString("control_signature",signature).putLong("revision",revision()+1).commit()
-  return JSONObject().put("protocol",1).put("revision",revision()).put("listening",pendingListening?:live.listening)
+  return JSONObject().put("protocol",WearProtocol.VERSION).put("supportedProtocols",JSONArray(listOf(WearProtocol.VERSION))).put("capabilities",JSONArray(listOf(WearProtocol.ORCHESTRA_KEYWORD))).put("revision",revision()).put("listening",pendingListening?:live.listening)
    .put("microphone",store.microphone).put("audio",store.audio).put("timing",store.timing).put("updateIntervalMs",store.watchUpdateInterval)
    .put("phase",if(pendingListening==true&&!live.listening)"Starting phone…" else if(live.listening&&store.microphone=="watch"&&!WatchAudioInput.connected)"Waiting for watch audio" else live.phase)
    .put("ready",engineReady&&live.listening).put("error",live.error).put("best",candidate(live.best)).put("second",candidate(live.second)).put("updatedAt",System.currentTimeMillis())
@@ -57,13 +64,14 @@ object PhoneWatch {
   stateDirty.set(true)
   if(stateQueued.compareAndSet(false,true))network.execute{try{do{stateDirty.set(false);publishState()}while(stateDirty.get())}finally{stateQueued.set(false);if(stateDirty.get())scheduleState(true)}}
  }
+ private fun forPeer(node:String,value:JSONObject):JSONObject{if(peerKeywords[node]==true)return value;return JSONObject(value.toString()).apply{optJSONObject("best")?.remove("orchestraKeyword");optJSONObject("second")?.remove("orchestraKeyword")}}
  private fun send(node:String,path:String,value:JSONObject){val bytes=value.toString().toByteArray();require(bytes.size<=90000){"Watch message too large"};Wearable.getMessageClient(context).sendMessage(node,path,bytes)}
  private fun publishState(){
   runCatching{
    val urgent=urgentState.getAndSet(false)
    val snapshot=state();val now=SystemClock.elapsedRealtime()
    val nodes=Tasks.await(Wearable.getNodeClient(context).connectedNodes,10,TimeUnit.SECONDS)
-   for(node in nodes)runCatching{send(node.id,WearMessages.STATE_PATH,snapshot)}
+   for(node in nodes)runCatching{send(node.id,WearMessages.STATE_PATH,forPeer(node.id,snapshot))}
    if(snapshot.optBoolean("ready")&&snapshot.optBoolean("listening")&&snapshot.optString("microphone")=="watch"&&!captureRequested&&nodes.any{it.isNearby}){captureRequested=true;requestCapture(true)}
    // Persist the latest result so a sleeping/reconnecting companion can catch up.
    if(urgent||now-lastSent>=Store(context).watchUpdateInterval){lastSent=now;val request=PutDataMapRequest.create(WearMessages.STATE_PATH);request.dataMap.putString("json",snapshot.toString());val data=request.asPutDataRequest();if(urgent)data.setUrgent();Wearable.getDataClient(context).putDataItem(data)}
@@ -72,6 +80,9 @@ object PhoneWatch {
  fun command(ctx:Context,node:String,raw:ByteArray){init(ctx);if(raw.size>16000)return;worker.execute{
   runCatching{
    val request=JSONObject(String(raw,Charsets.UTF_8));val id=request.optString("requestId");require(id.length in 1..100){"Invalid request ID"}
+   val versions=request.optJSONArray("supportedProtocols")?.let{a->require(a.length() in 1..16);IntArray(a.length()){a.getInt(it)}}
+   require(WearProtocol.compatible(request.optInt("protocol",1),versions)){"Update phone or watch: incompatible communication protocol"}
+   val caps=request.optJSONArray("capabilities");peerKeywords[node]=caps!=null&&(0 until caps.length()).any{caps.optString(it)==WearProtocol.ORCHESTRA_KEYWORD}
    val kind=request.optString("kind");val signature=java.security.MessageDigest.getInstance("SHA-256").digest(raw).joinToString(""){"%02x".format(it)}
    val cache=JSONObject(prefs().getString("handled","{}")?:"{}");val cached=cache.optJSONObject(id)
    if(cached!=null){require(cached.optString("signature")==signature){"Request ID reused with different command"};send(node,WearMessages.ACK_PATH,cached.getJSONObject("ack"));return@execute}
@@ -83,10 +94,10 @@ object PhoneWatch {
     "set"->{state();check(request.has("expectedRevision")&&request.getLong("expectedRevision")==revision()){"Settings changed; refresh and try again"};applyValues(request)}
     else->kotlin.error("Unknown watch command")
    }}catch(e:Exception){ok=false;error=e.message?:"Command failed"}
-   val ack=JSONObject().put("requestId",id).put("ok",ok).put("state",state());if(error.isNotEmpty())ack.put("error",error)
+   val ack=JSONObject().put("requestId",id).put("ok",ok).put("state",forPeer(node,state()));if(error.isNotEmpty())ack.put("error",error)
    if(kind=="set"||kind=="reset"){cache.put(id,JSONObject().put("signature",signature).put("ack",ack));while(cache.length()>64)cache.remove(cache.keys().next());prefs().edit().putString("handled",cache.toString()).commit()}
    send(node,WearMessages.ACK_PATH,ack);scheduleState(true)
-  }.onFailure{e->runCatching{val id=JSONObject(String(raw,Charsets.UTF_8)).optString("requestId");send(node,WearMessages.ACK_PATH,JSONObject().put("requestId",id).put("ok",false).put("error",e.message?:"Command failed").put("state",state()))}}
+  }.onFailure{e->runCatching{val id=JSONObject(String(raw,Charsets.UTF_8)).optString("requestId");send(node,WearMessages.ACK_PATH,JSONObject().put("requestId",id).put("ok",false).put("error",e.message?:"Command failed").put("state",forPeer(node,state())))}}
  }}
  fun setLocal(ctx:Context,values:JSONObject){init(ctx);worker.execute{runCatching{applyValues(values)}.onFailure{e->LiveState.publish(LiveState.current.copy(error=e.message?:"Watch control failed"))};scheduleState(true)}}
  @Synchronized private fun applyValues(values:JSONObject){

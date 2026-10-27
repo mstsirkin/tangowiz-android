@@ -71,12 +71,13 @@ class AmbientDisplayActivity:ComponentActivity(){
   if(!::content.isInitialized)return
   clock.text=LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
   val stale=WatchCache.stale();val name=uncertain(WatchCache.orchestra())
-  orchestra.showName(if(stale&&name!="—"&&!name.startsWith("?"))"? $name" else name)
+  orchestra.showName(if(stale&&name!="—"&&!name.startsWith("?"))"? $name" else name,WatchCache.keyword())
   song.text=uncertain(WatchCache.song())
   val best=WatchCache.state.optJSONObject("best");val confidence=best?.optInt("percent")?.coerceIn(0,100)
   percent.text=confidence?.let{"$it%"}?:""
   status.text=when{
    Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED->"Enable notifications to keep display"
+   !WatchCache.protocolCompatible->WatchCache.error
    !WatchCache.connected->"Disconnected · cached"
    WatchCache.state.optString("error").isNotBlank()->WatchCache.state.optString("error")
    !WatchCache.state.optBoolean("listening")->"Ⅱ"

@@ -14,10 +14,8 @@ import java.util.Locale
 /** Display-only preferences. Unknown/ambiguous labels retain the original uniform presentation. */
 object OrchestraKeywords {
  data class Hint(val keyword:String,val append:Boolean)
- @Volatile private var names:Map<String,Hint>?=null
  private fun key(s:String)=Normalizer.normalize(s,Normalizer.Form.NFD).replace(Regex("\\p{M}+"),"").lowercase(Locale.ROOT).replace(Regex("[^\\p{L}\\p{N}]+")," ").trim()
- @Synchronized private fun load(ctx:Context):Map<String,Hint>{names?.let{return it};val table=JSONObject(ctx.assets.open("orchestra-keywords.json").bufferedReader().use{it.readText()});require(table.getInt("version")==1);val rows=table.getJSONArray("names");val result=mutableMapOf<String,Hint>();for(i in 0 until rows.length()){val r=rows.getJSONArray(i);val k=key(r.getString(0));val hint=Hint(r.getString(1),r.getBoolean(2));val prior=result[k];require(prior==null||key(prior.keyword)==key(hint.keyword)&&prior.append==hint.append){"Conflicting orchestra display preference"};result[k]=hint};names=result.toMap();return names!!}
- fun lookup(ctx:Context,name:String):Hint?{if(name.contains('/')||name.contains('?')||name.contains('|'))return null;return runCatching{load(ctx)[key(name)]}.getOrNull()}
+ fun fromMessage(value:JSONObject?):Hint?{value?:return null;val text=value.optString("text");val placement=value.optString("placement");if(text.isBlank()||text.length>100||placement !in setOf("in_name","append"))return null;return Hint(text,placement=="append")}
  /** UTF-16 offsets for Android spans, including decomposed accent marks. */
  fun span(name:String,keyword:String):IntRange?{
   val normalized=StringBuilder();val starts=mutableListOf<Int>();val ends=mutableListOf<Int>();var pos=0
@@ -39,22 +37,23 @@ class OrchestraNameView(ctx:Context):TextView(ctx){
  var keywordMaxSp=46
  var contextMaxSp=26
  private var name=""
+ private var hint:OrchestraKeywords.Hint?=null
  private var renderedKey=""
  private var rendering=false
  var emphasized=false;private set
  init{gravity=Gravity.CENTER;includeFontPadding=false;maxLines=2;setTypeface(null,Typeface.BOLD)}
- fun showName(value:String){name=value;fitName()}
+ fun showName(value:String,keyword:OrchestraKeywords.Hint?=null){name=value;hint=keyword;fitName()}
  override fun onSizeChanged(w:Int,h:Int,oldw:Int,oldh:Int){super.onSizeChanged(w,h,oldw,oldh);fitName()}
  private data class Choice(val text:SpannableString,val size:Int)
  private fun fitName(){
   if(rendering)return
   val width=width-compoundPaddingLeft-compoundPaddingRight;val height=height-compoundPaddingTop-compoundPaddingBottom
-  val cache="$name|$width|$height|$normalMaxSp|$keywordMaxSp|$contextMaxSp|${resources.configuration.fontScale}"
+  val cache="$name|$hint|$width|$height|$normalMaxSp|$keywordMaxSp|$contextMaxSp|${resources.configuration.fontScale}"
   if(cache==renderedKey)return
   rendering=true
   try{
    val plain=if(name.startsWith("? "))name.substring(2) else name
-   val hint=OrchestraKeywords.lookup(context,plain)
+   val hint=hint.takeUnless{plain.contains('/')||plain.contains('?')||plain.contains('|')}
    val span=if(hint!=null&&!hint.append)OrchestraKeywords.span(name,hint.keyword) else null
    var choice:Choice?=null
    if(width>0&&height>0&&hint!=null&&(hint.append||!OrchestraKeywords.sameText(plain,hint.keyword))){
