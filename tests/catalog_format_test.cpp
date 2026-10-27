@@ -34,10 +34,11 @@ struct Fixture {
  std::string query(){Engine e(bytes.data(),bytes.size());std::array<float,384> q{};q[0]=q[128]=q[256]=1;return e.search(q.data(),3,1,0);}
 };
 int main(int argc,char**argv){
- Fixture v1(1);auto old=v1.query();assert(old.find("\"groupSize\":1")!=std::string::npos);assert(old.find("reference_pq_cosine_v1")!=std::string::npos);
+ Fixture v1(1);auto old=v1.query();assert(old.find("\"groupSize\":1")!=std::string::npos);assert(old.find("reference_pq_cosine_v1")!=std::string::npos);assert(old.find("\"referenceEndSeconds\":16,")!=std::string::npos);
  Fixture v2(2);auto current=v2.query();assert(current.find("\"groupSize\":2")!=std::string::npos);assert(current.find("\"sourceIds\":[\"source-a\",\"source-b\"]")!=std::string::npos);assert(current.find("Example Singer")!=std::string::npos);assert(current.find("1949-07-20")!=std::string::npos);assert(current.find("\"scored\":false,\"score\":null")!=std::string::npos);assert(current.find("catalog_duplicate_group_v2")!=std::string::npos);assert(current.find("\"score\":1,")!=std::string::npos);
  if(argc>1){std::ofstream out(argv[1],std::ios::binary);out.write(reinterpret_cast<const char*>(v2.bytes.data()),v2.bytes.size());}
  Fixture maximum(2,UINT32_MAX,UINT32_MAX);assert(maximum.query().find("\"groupSize\":2")!=std::string::npos);
+ assert(current.find("\"referenceEndSeconds\":16,")!=std::string::npos);
  Fixture zero(2,0,0);assert(zero.query().find("\"groupSize\":1")!=std::string::npos);assert(zero.query().find("Example Singer")==std::string::npos);
  Fixture distinct(2,1,2);assert(distinct.query().find("\"groupSize\":1")!=std::string::npos);
  Fixture wrongVersion(1);wrongVersion.bytes[8]=2;wrongVersion.reject();

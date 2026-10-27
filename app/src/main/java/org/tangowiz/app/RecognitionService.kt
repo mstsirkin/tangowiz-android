@@ -179,8 +179,10 @@ class RecognitionService:Service(){
    NativeEngine.reset(native)
    val input=ByteBuffer.allocateDirect(256*33*4).order(ByteOrder.nativeOrder());val output=ByteBuffer.allocateDirect(128*4).order(ByteOrder.nativeOrder())
    val pcmHistory=FloatArray(131072);var pcmSize=0;val nextFrame=IntArray(13);var baseSample=0L;var samples=0L;var lastLogged:Candidate?=null;var logSecond=-60.0;var lastFallback=-30.0;var hadSignal=false
-   val fallbackResult=java.util.concurrent.atomic.AtomicReference<Pair<JSONObject,Long>?>(null)
+   val fallbackResult=java.util.concurrent.atomic.AtomicReference<Triple<JSONObject,Long,Long>?>(null)
    val signalGeneration=java.util.concurrent.atomic.AtomicLong(0)
+   val songEnd=SongEndPredictor()
+   var fallbackEarliestSample=0L
    val fp=DataOutputStream(BufferedOutputStream(File(dir,"fingerprints.bin").outputStream()));fingerprintLog=fp
    fallbackWorker=FallbackMatcher(bundle!!){offset,speed,embedding->if(active(token))io.execute{if(active(token)){fp.writeDouble(offset.toDouble());fp.writeFloat(speed);embedding.forEach{fp.writeFloat(it)}}}}
    File(dir,"session.json").writeText(JSONObject().put("start",Instant.now().toString()).put("sample_rate",8000).put("input_source",if(usingWatch)"watch" else "phone").put("fingerprint_format","big-endian: float64 query_offset_seconds, float32 speed, 128 float32 embedding; repeated records").put("confidence","Heuristic score, not calibrated probability").put("resource_format",bundle!!.formatVersion).put("bundle_version",bundle!!.version).put("archive_sha256",bundle!!.archiveHash).put("app_version",packageManager.getPackageInfo(packageName,0).versionName).toString(2))
@@ -203,9 +205,16 @@ class RecognitionService:Service(){
      val queryOffset=(sourceStart/8000.0).toFloat()
      val rms=SignalGate.rms(pcm)
      if(rms<SignalGate.MIN_RMS){
-      if(hadSignal){NativeEngine.reset(native);signalGeneration.incrementAndGet()};hadSignal=false;audibleWindow=false;result=null;fallbackResult.set(null)
+      if(hadSignal){NativeEngine.reset(native);signalGeneration.incrementAndGet()};songEnd.clear();fallbackEarliestSample=sourceStart.toLong();hadSignal=false;audibleWindow=false;result=null;fallbackResult.set(null)
       if(store.timing)io.execute{store.append(timings,JSONObject().put("stage","silence_gate").put("query_offset",queryOffset).put("rms",rms).put("threshold",SignalGate.MIN_RMS))}
       continue
+     }
+     val boundary=songEnd.takeReset(queryOffset.toDouble())
+     if(boundary!=null){
+      NativeEngine.reset(native);signalGeneration.incrementAndGet();fallbackResult.set(null)
+      fallbackEarliestSample=sourceStart.toLong();lastLogged=null;logSecond=-60.0
+      val transition=JSONObject().put("query_offset",queryOffset).put("predicted_end",boundary.endSeconds).put("group_id",boundary.identity).put("score",boundary.score).put("observations",boundary.observations).put("support_span_seconds",boundary.spanSeconds).put("last_confirmation_age_seconds",queryOffset-boundary.lastConfirmedSeconds)
+      io.execute{store.append(File(dir,"transitions.jsonl"),transition.put("time",Instant.now().toString()))}
      }
      audibleWindow=true;hadSignal=true
      t=SystemClock.elapsedRealtimeNanos();val cpu=android.os.Debug.threadCpuTimeNanos();val features=NativeEngine.features(pcm);timing("frontend",t,cpu)
@@ -215,6 +224,8 @@ class RecognitionService:Service(){
      io.execute{fp.writeDouble(queryOffset.toDouble());fp.writeFloat(speed);embedding.forEach{fp.writeFloat(it)};if(frame%4==0)fp.flush()}
      if(!active(token))break
      t=SystemClock.elapsedRealtimeNanos();val matchCpu=android.os.Debug.threadCpuTimeNanos();val matchProcess=android.os.Process.getElapsedCpuTime();val raw=NativeEngine.search(native,embedding,1,speed,queryOffset);timing("lookup_and_aggregation",t,matchCpu,JSONObject().put("query_offset",offset).put("speed",speed),process0=matchProcess);result=JSONObject(raw)
+     val matched=result!!.optJSONArray("candidates")?.optJSONObject(0)
+     if(matched!=null)songEnd.observe(queryOffset.toDouble(),matched.optString("groupId",matched.optString("id")),matched.optDouble("score"),matched.optDouble("referenceSeconds"),matched.optDouble("referenceEndSeconds"),result!!.optInt("frames"),matched.optDouble("speed",1.0))
     }
     }
     val earliest=(nextFrame[6]*4000.0).toLong()-80064
@@ -224,12 +235,12 @@ class RecognitionService:Service(){
     val candidates=OrchestraPresentation.candidates(result)
     var presentationPool=candidates
     val nativeBest=candidates.firstOrNull();var selectedResult=result
-    if(audibleWindow&&offset>10&&offset-lastFallback>=30&&(nativeBest?.score?:0.0)<.60&&pcmSize>=48000){
+    if(audibleWindow&&offset>10&&offset-lastFallback>=30&&(nativeBest?.score?:0.0)<.60&&pcmSize>=48000&&samples-48000>=fallbackEarliestSample){
      lastFallback=offset;val fallbackGeneration=signalGeneration.get();val matchedBaseline=NativeEngine.recent(native,10);val snapshot=pcmHistory.copyOfRange(pcmSize-48000,pcmSize)
-     fallbackWorker!!.start(snapshot,(samples-48000)/8000.0){r,t0->val variantScore=r.optJSONArray("candidates")?.optJSONObject(0)?.optDouble("score")?:0.0;r.put("matched_duration_baseline_score",matchedBaseline);val allowed=matchedBaseline.isFinite()&&variantScore>=matchedBaseline+.08&&signalGeneration.get()==fallbackGeneration&&active(token);r.put("matched_duration_guard",allowed).put("same_signal_generation",signalGeneration.get()==fallbackGeneration);if(allowed)fallbackResult.set(Pair(r,t0));io.execute{val row=JSONObject().put("stage","speed_fallback").put("elapsed_ms",(SystemClock.elapsedRealtimeNanos()-t0)/1e6).put("result",r);store.append(File(dir,"fallback.jsonl"),row);if(store.timing)store.append(timings,row)}}
+     fallbackWorker!!.start(snapshot,(samples-48000)/8000.0){r,t0->val variantScore=r.optJSONArray("candidates")?.optJSONObject(0)?.optDouble("score")?:0.0;r.put("matched_duration_baseline_score",matchedBaseline);val allowed=matchedBaseline.isFinite()&&variantScore>=matchedBaseline+.08&&signalGeneration.get()==fallbackGeneration&&active(token);r.put("matched_duration_guard",allowed).put("same_signal_generation",signalGeneration.get()==fallbackGeneration);if(allowed)fallbackResult.set(Triple(r,t0,fallbackGeneration));io.execute{val row=JSONObject().put("stage","speed_fallback").put("elapsed_ms",(SystemClock.elapsedRealtimeNanos()-t0)/1e6).put("result",r);store.append(File(dir,"fallback.jsonl"),row);if(store.timing)store.append(timings,row)}}
     }
     val fallback=fallbackResult.get()
-    if(audibleWindow&&fallback!=null&&(SystemClock.elapsedRealtimeNanos()-fallback.second)<15_000_000_000L){
+    if(audibleWindow&&fallback!=null&&fallback.third==signalGeneration.get()&&(SystemClock.elapsedRealtimeNanos()-fallback.second)<15_000_000_000L){
      val f=fallback.first.optJSONArray("candidates")?.optJSONObject(0)
      if(f!=null&&f.optDouble("score")>=.65&&f.optDouble("score")>(nativeBest?.score?:0.0)+.08){selectedResult=fallback.first;presentationPool=OrchestraPresentation.candidates(fallback.first)+candidates}
     }
