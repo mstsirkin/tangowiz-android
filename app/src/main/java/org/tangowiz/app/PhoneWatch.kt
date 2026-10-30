@@ -27,6 +27,8 @@ object PhoneWatch {
  private val main=Handler(Looper.getMainLooper())
  @Volatile private var initialized=false
  @Volatile var engineReady=false
+ @Volatile var activeBundle:BundleSnapshot?=null
+ fun djAvailable():Boolean=DjPopularity.table(if(LiveState.current.listening)activeBundle?:ResourceStore(context).current() else ResourceStore(context).current())!=null
  @Volatile private var pendingListening:Boolean?=null
  private var lastSent=0L
  private val pushPolicy=WatchPushPolicy()
@@ -37,16 +39,17 @@ object PhoneWatch {
  private fun revision()=prefs().getLong("revision",0)
  private fun candidate(c:Candidate?,bundle:BundleSnapshot?,calibration:ConfidenceCalibration.Parameters):Any {
   c?:return JSONObject.NULL
-  val result=JSONObject().put("id",c.id).put("orchestra",c.display("orchestra").take(500)).put("title",c.display("title").take(1000)).put("singer",c.display("singer").take(300)).put("year",c.display("year").take(100)).put("score",c.score).put("percent",calibration.percent(c.score))
+  val result=JSONObject().put("id",c.id).put("orchestra",c.display("orchestra").take(500)).put("title",c.display("title").take(1000)).put("singer",c.display("singer").take(300)).put("year",c.display("year").take(100)).put("score",c.score).put("rankingScore",c.rankingScore).put("dj",DjPopularity.record(c)).put("percent",calibration.percent(c.rankingScore))
   CatalogKeywords.hint(bundle,c.display("orchestra"))?.let{result.put("orchestraKeyword",it.json())}
   return result
  }
  @Synchronized fun state():JSONObject {
   val store=Store(context);val live=LiveState.current;val bundle=ResourceStore(context).current();val calibration=ConfidenceCalibration.parameters(bundle)
-  val signature="${pendingListening?:live.listening}|${store.microphone}|${store.audio}|${store.timing}|${store.watchUpdateInterval}"
+  val signature="${pendingListening?:live.listening}|${store.microphone}|${store.audio}|${store.timing}|${store.watchUpdateInterval}|${store.dj}"
   if(prefs().getString("control_signature","")!=signature)prefs().edit().putString("control_signature",signature).putLong("revision",revision()+1).commit()
-  return JSONObject().put("protocol",WearProtocol.VERSION).put("supportedProtocols",JSONArray(listOf(WearProtocol.VERSION))).put("capabilities",JSONArray(listOf(WearProtocol.ORCHESTRA_KEYWORD))).put("revision",revision()).put("listening",pendingListening?:live.listening)
+  return JSONObject().put("protocol",WearProtocol.VERSION).put("supportedProtocols",JSONArray(listOf(WearProtocol.VERSION))).put("capabilities",JSONArray(listOf(WearProtocol.ORCHESTRA_KEYWORD,WearProtocol.DJ_BOOST))).put("revision",revision()).put("listening",pendingListening?:live.listening)
    .put("microphone",store.microphone).put("audio",store.audio).put("timing",store.timing).put("updateIntervalMs",store.watchUpdateInterval)
+   .put("djEnabled",store.dj&&djAvailable()).put("djAvailable",djAvailable())
    .put("phase",if(pendingListening==true&&!live.listening)"Starting phone…" else if(live.listening&&store.microphone=="watch"&&!WatchAudioInput.connected)"Waiting for watch audio" else live.phase)
    .put("ready",engineReady&&live.listening).put("error",live.error).put("best",candidate(live.best,bundle,calibration)).put("second",candidate(live.second,bundle,calibration)).put("updatedAt",System.currentTimeMillis())
  }
@@ -57,7 +60,7 @@ object PhoneWatch {
   val live=LiveState.current
   if(pendingListening==live.listening||live.exited)pendingListening=null
   val key="${live.listening}|${live.error}|${live.resident}|$engineReady"
-  val displayPercent=live.best?.let{ConfidenceCalibration.percent(ResourceStore(context).current(),it.score)}?:0
+  val displayPercent=live.best?.let{ConfidenceCalibration.percent(ResourceStore(context).current(),it.rankingScore)}?:0
   val confident=live.listening&&live.error.isEmpty()&&displayPercent>=70
   val decision=pushPolicy.observe(SystemClock.elapsedRealtime(),Store(context).watchUpdateInterval,key,confident,force)
   if(decision==WatchPushPolicy.Decision.SKIP)return
@@ -91,7 +94,7 @@ object PhoneWatch {
    try{when(kind){
     "state"->Unit
     "reset"->{check(LiveState.current.listening){"Start identification first"};main.post{if(LiveState.current.listening)context.startService(Intent(context,RecognitionService::class.java).setAction(RecognitionService.RESET))}}
-    "history"->{val rows=RecordingHistory.consecutive(Store(context).history()).takeLast(40);val safe=JSONArray();for(row in rows){safe.put(JSONObject().put("time",row.optString("time")).put("orchestra",Candidate.fromJson(row).display("orchestra").take(500)).put("title",Candidate.fromJson(row).display("title").take(500)).put("singer",Candidate.fromJson(row).display("singer").take(300)).put("year",Candidate.fromJson(row).display("year")).put("confidence_score",row.optInt("confidence_score")))};send(node,WearMessages.HISTORY_PATH,JSONObject().put("rows",safe))}
+    "history"->{val rows=RecordingHistory.consecutive(Store(context).history()).takeLast(40);val safe=JSONArray();for(row in rows){safe.put(JSONObject().put("time",row.optString("time")).put("orchestra",Candidate.fromJson(row).display("orchestra").take(500)).put("title",Candidate.fromJson(row).display("title").take(500)).put("singer",Candidate.fromJson(row).display("singer").take(300)).put("year",Candidate.fromJson(row).display("year")).put("confidence_score",row.optInt("confidence_score")).put("dj",row.optJSONObject("dj")?:JSONObject.NULL))};send(node,WearMessages.HISTORY_PATH,JSONObject().put("rows",safe))}
     "set"->{state();check(request.has("expectedRevision")&&request.getLong("expectedRevision")==revision()){"Settings changed; refresh and try again"};applyValues(request)}
     else->kotlin.error("Unknown watch command")
    }}catch(e:Exception){ok=false;error=e.message?:"Command failed"}
@@ -108,9 +111,13 @@ object PhoneWatch {
   val listening=if(values.has("listening"))values.getBoolean("listening") else pendingListening?:LiveState.current.listening
   val audio=if(values.has("audio"))values.getBoolean("audio") else store.audio
   val timing=if(values.has("timing"))values.getBoolean("timing") else store.timing
+  val dj=if(values.has("djEnabled"))values.getBoolean("djEnabled") else store.dj
+  if(values.has("djEnabled")&&dj)check(djAvailable()){"DJ data is unavailable in this library"}
+  val djChanged=store.dj!=dj;store.dj=dj
+  if(djChanged)store.append(java.io.File(store.root,"settings.jsonl"),JSONObject().put("time",java.time.Instant.now().toString()).put("event","dj_setting_changed").put("djRequested",dj).put("djAvailable",djAvailable()))
   store.microphone=source;store.watchUpdateInterval=interval;store.audio=audio;store.timing=timing
   pendingListening=listening
-  prefs().edit().putLong("revision",revision()+1).putString("control_signature","$listening|$source|$audio|$timing|$interval").commit()
+  prefs().edit().putLong("revision",revision()+1).putString("control_signature","$listening|$source|$audio|$timing|$interval|$dj").commit()
   if(!listening||source=="phone"){WatchAudioInput.close();captureRequested=false;network.execute{requestCapture(false)}}
   else if(oldSource!=source)captureRequested=false
   pendingListening=listening

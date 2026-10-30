@@ -69,7 +69,7 @@ class RecognitionService:Service(){
   if(exiting)return START_NOT_STICKY
   when(intent?.action){
    EXIT->{requestExit();return START_NOT_STICKY}
-   "RELOAD"->{PhoneWatch.engineReady=false;synchronized(stateLock){desired=false;generation++;reloadPending=true;stateLock.notifyAll()};stopCapture();releaseWake();LiveState.publish(RecognitionState(resident=true,phase="Ⅱ"));event("resource_reload_requested")}
+   "RELOAD"->{PhoneWatch.activeBundle=null;PhoneWatch.engineReady=false;synchronized(stateLock){desired=false;generation++;reloadPending=true;stateLock.notifyAll()};stopCapture();releaseWake();LiveState.publish(RecognitionState(resident=true,phase="Ⅱ"));event("resource_reload_requested")}
    RESET->{
     synchronized(stateLock){
      if(!desired||exiting)return START_NOT_STICKY
@@ -105,7 +105,7 @@ class RecognitionService:Service(){
   event("exit_requested");stopCapture();WatchAudioInput.close();PhoneWatch.stopRemoteCapture();releaseWake();LiveState.publish(RecognitionState(resident=true,phase="…"))
   if(owner==null){io.shutdown();finishExit()} else getSystemService(NotificationManager::class.java).notify(1,notification())
  }
- override fun onDestroy(){synchronized(stateLock){exiting=true;desired=false;generation++;stateLock.notifyAll()};stopCapture();WatchAudioInput.close();PhoneWatch.engineReady=false;releaseWake();super.onDestroy()}
+ override fun onDestroy(){synchronized(stateLock){exiting=true;desired=false;generation++;stateLock.notifyAll()};stopCapture();WatchAudioInput.close();PhoneWatch.activeBundle=null;PhoneWatch.engineReady=false;releaseWake();super.onDestroy()}
  private fun finishExit(){main.post{
   LiveState.publish(RecognitionState(exited=true));sendBroadcast(Intent(EXIT_ACTIVITY).setPackage(packageName))
   stopForeground(STOP_FOREGROUND_REMOVE);getSystemService(NotificationManager::class.java).cancel(1);stopSelf()
@@ -120,7 +120,7 @@ class RecognitionService:Service(){
     synchronized(stateLock){if(!desired&&!exiting){LiveState.publish(LiveState.current.copy(listening=false,resident=true,phase="Ⅱ",best=null,second=null));event("pause_complete");refreshNotification()}}
    }
   }finally{
-   stopCapture();releaseWake();PhoneWatch.engineReady=false;model?.close();model=null;if(native!=0L)NativeEngine.close(native);native=0L
+   stopCapture();releaseWake();PhoneWatch.activeBundle=null;PhoneWatch.engineReady=false;model?.close();model=null;if(native!=0L)NativeEngine.close(native);native=0L
    bundle?.let{ResourcePins.release(it)};bundle=null;ResourceStore(this).cleanupUnused()
    io.shutdown();runCatching{io.awaitTermination(10,java.util.concurrent.TimeUnit.SECONDS)}
    event("engine_closed");finishExit()
@@ -175,7 +175,7 @@ class RecognitionService:Service(){
    if(exiting)return
    if(native==0L){t=SystemClock.elapsedRealtimeNanos();native=NativeEngine.initFile(bundle!!.catalog.absolutePath);check(native!=0L){"Index initialization failed"};indexLoads++;event("index_loaded");timing("index_load",t)}
    if(!active(token))return
-   PhoneWatch.engineReady=true;PhoneWatch.changed()
+   PhoneWatch.activeBundle=bundle;PhoneWatch.engineReady=true;PhoneWatch.changed()
    NativeEngine.reset(native)
    val input=ByteBuffer.allocateDirect(256*33*4).order(ByteOrder.nativeOrder());val output=ByteBuffer.allocateDirect(128*4).order(ByteOrder.nativeOrder())
    val pcmHistory=FloatArray(131072);var pcmSize=0;val nextFrame=IntArray(13);var baseSample=0L;var samples=0L;var lastLogged:Candidate?=null;var logSecond=-60.0;var lastFallback=-30.0;var hadSignal=false
@@ -244,8 +244,11 @@ class RecognitionService:Service(){
      val f=fallback.first.optJSONArray("candidates")?.optJSONObject(0)
      if(f!=null&&f.optDouble("score")>=.65&&f.optDouble("score")>(nativeBest?.score?:0.0)+.08){selectedResult=fallback.first;presentationPool=OrchestraPresentation.candidates(fallback.first)+candidates}
     }
-    val presented=OrchestraPresentation.merge(presentationPool);val best=presented.firstOrNull();val second=presented.getOrNull(1)
-    if(best!=null&&(lastLogged==null||!best.sameRecording(lastLogged!!)||offset-logSecond>=5)){val logged=best;val raw=selectedResult;io.execute{store.result(logged,second,offset+1,session,raw)};lastLogged=best;logSecond=offset}
+    val djData=DjPopularity.table(bundle);val djRequested=store.dj
+    val boosted=DjPopularity.rank(presentationPool,djData,djRequested)
+    val presented=OrchestraPresentation.merge(boosted).map{it.copy(confidence=ConfidenceCalibration.percent(bundle,it.rankingScore))};val best=presented.firstOrNull();val second=presented.getOrNull(1)
+    selectedResult=selectedResult?.let{JSONObject(it.toString()).put("dj",JSONObject().put("requested",djRequested).put("available",djData!=null).put("dataVersion",djData?.version?:""))}
+    if(best!=null&&(lastLogged==null||!best.sameRecording(lastLogged!!)||best.djRequested!=lastLogged!!.djRequested||best.djAvailable!=lastLogged!!.djAvailable||best.djVersion!=lastLogged!!.djVersion||offset-logSecond>=5)){val logged=best;val raw=selectedResult;io.execute{store.result(logged,second,offset+1,session,raw)};lastLogged=best;logSecond=offset}
     synchronized(stateLock){if(active(token))LiveState.publish(RecognitionState(listening=true,resident=true,phase="♪",best=best,second=second,seconds=offset+1))}
     timing("end_to_end",start,extra=JSONObject().put("audio_seconds",samples/8000.0).put("audio_to_result_lag_ms",(SystemClock.elapsedRealtimeNanos()-start)/1e6-samples/8.0).put("backlog_seconds",queue.size*.5).put("captured_seconds",captured.get()/8000.0))
    }

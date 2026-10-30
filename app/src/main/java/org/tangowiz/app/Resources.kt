@@ -39,8 +39,9 @@ data class ResourceManifest(val version:String,val archiveUrl:String,val archive
     val version=json.getString("bundleVersion");require(version.isNotBlank()&&version.length<=128)
     fun file(j:JSONObject,max:Long):ResourceFile{val size=j.getLong("bytes");val hash=j.getString("sha256").lowercase();require(size in 1..max&&hash.matches(Regex("[0-9a-f]{64}")));return ResourceFile(size,hash)}
     val a=json.getJSONObject("archive");val url=a.getString("url");require(URL(url).protocol=="https"||URL(url).host in setOf("127.0.0.1","localhost"))
-    val f=json.getJSONObject("files");val required=setOf("catalog.bin","nmfp.tflite");val names=f.keys().asSequence().toSet();require(names.containsAll(required)&&names.all{it in required||it in setOf("orchestra-keywords.json",ConfidenceCalibration.FILE_NAME)})
+    val f=json.getJSONObject("files");val required=setOf("catalog.bin","nmfp.tflite");val names=f.keys().asSequence().toSet();require(names.containsAll(required)&&names.all{it in required||it in setOf("orchestra-keywords.json",ConfidenceCalibration.FILE_NAME,DjPriorTable.FILE_NAME)})
     val files=mutableMapOf("catalog.bin" to file(f.getJSONObject("catalog.bin"),8L*1024*1024*1024),"nmfp.tflite" to file(f.getJSONObject("nmfp.tflite"),512L*1024*1024))
+    if(f.has(DjPriorTable.FILE_NAME))files[DjPriorTable.FILE_NAME]=file(f.getJSONObject(DjPriorTable.FILE_NAME),4194304)
     if(f.has("orchestra-keywords.json"))files["orchestra-keywords.json"]=file(f.getJSONObject("orchestra-keywords.json"),262144)
     if(f.has(ConfidenceCalibration.FILE_NAME))files[ConfidenceCalibration.FILE_NAME]=file(f.getJSONObject(ConfidenceCalibration.FILE_NAME),4096)
     return ResourceManifest(version,url,file(a,9L*1024*1024*1024),files,json,format)
@@ -132,6 +133,7 @@ class ResourceStore(context:Context,private val transport:ResourceTransport=Http
     FileOutputStream(File(stage,entry.name)).use{fileOut->val out=BufferedOutputStream(fileOut,262144);val b=ByteArray(262144);while(true){checkCancelled();val n=zip.read(b);if(n<0)break;bytes+=n;requireDownload(bytes<=expected.bytes,"Resource ZIP expands beyond expected size");digest.update(b,0,n);out.write(b,0,n);rawVerified+=n;verification(m.archive.bytes+rawVerified)};out.flush();fileOut.fd.sync()}
     requireDownload(bytes==expected.bytes&&digest.digest().joinToString(""){"%02x".format(it)}==expected.sha256,"Resource file failed verification");zip.closeEntry()
    }};requireDownload(seen==m.files.keys,"Incomplete resource ZIP")
+   if(m.files.containsKey(DjPriorTable.FILE_NAME)){try{val data=DjPriorTable.decode(File(stage,DjPriorTable.FILE_NAME).readBytes());require(data.catalogHash.joinToString(""){"%02x".format(it)}==m.files.getValue("catalog.bin").sha256)}catch(e:Exception){throw IOException("DJ data is incompatible; update app or retry",e)}}
    if(m.files.containsKey("orchestra-keywords.json")){try{CatalogKeywords.decode(File(stage,"orchestra-keywords.json").readBytes())}catch(e:Exception){throw IOException("Orchestra display data is incompatible; update app or retry",e)}}
    if(m.files.containsKey(ConfidenceCalibration.FILE_NAME)){try{ConfidenceCalibration.decode(File(stage,ConfidenceCalibration.FILE_NAME).readBytes())}catch(e:Exception){throw IOException("Confidence display data is incompatible; update app or retry",e)}}
    try{validate(BundleSnapshot(stage,m.version,m.archive.sha256,m.formatVersion))}catch(e:Exception){throw AppUpdateRequired("These recognition resources need a newer app")}
