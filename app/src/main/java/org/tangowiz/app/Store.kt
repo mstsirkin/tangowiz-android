@@ -19,6 +19,9 @@ class Store(val context:Context) {
  val root=File(context.filesDir,"logs").apply{mkdirs()}
  val history=File(root,"history.jsonl")
  val prefs=context.getSharedPreferences("settings",0)
+ var recognitionSpeeds:List<Double>
+  get()=runCatching{RecognitionSpeeds.parse(prefs.getString("recognition_speed_offsets",null)?:error("Unset"))}.getOrElse{RecognitionSpeeds.defaults}
+  set(v){prefs.edit().putString("recognition_speed_offsets",RecognitionSpeeds.validate(v).joinToString(",")).commit()}
  var microphone:String get()=prefs.getString("microphone","phone")?:"phone";set(v){require(v in setOf("phone","watch"));prefs.edit().putString("microphone",v).commit()}
  var watchUpdateInterval:Long get()=prefs.getLong("watch_update_interval",5000L).coerceIn(2000L,60000L);set(v){prefs.edit().putLong("watch_update_interval",v.coerceIn(2000L,60000L)).commit()}
  var audio:Boolean get()=prefs.getBoolean("audio",false); set(v){prefs.edit().putBoolean("audio",v).apply()}

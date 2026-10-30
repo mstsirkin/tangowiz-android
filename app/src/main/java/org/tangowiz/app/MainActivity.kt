@@ -70,7 +70,53 @@ class MainActivity:Activity(){
  override fun onNewIntent(value:Intent){super.onNewIntent(value);intent=value;if(ensureResources())handleWatchLaunch()}
  private fun ensureResources():Boolean{if(ResourceStore(this).current()!=null)return true;startActivity(Intent(this,SetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP));finish();return false}
  private fun openUpdate(){startActivity(Intent(this,SetupActivity::class.java).putExtra(SetupActivity.UPDATE,true))}
- private fun vMenu(anchor:View){val r=ResourceStore(this);val menu=PopupMenu(this,anchor);menu.menu.add(0,1,0,"Update");menu.menu.add(0,3,2,"Export debug info");menu.menu.add(0,4,3,"Clear older history and recordings");menu.menu.add(0,5,4,"Watch updates");menu.menu.add(0,2,1,"Automatic update checks").apply{isCheckable=true;isChecked=r.automaticChecks};menu.setOnMenuItemClickListener{item->when(item.itemId){1->openUpdate();5->watchUpdates();4->confirmCleanup();3->startActivity(Intent(this,ExportActivity::class.java).putExtra(ExportActivity.NEW,true).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP));2->{r.automaticChecks=!r.automaticChecks;item.isChecked=r.automaticChecks}};true};menu.show()}
+ private fun vMenu(anchor:View){val r=ResourceStore(this);val menu=PopupMenu(this,anchor);menu.menu.add(0,6,5,"Advanced");menu.menu.add(0,1,0,"Update");menu.menu.add(0,3,2,"Export debug info");menu.menu.add(0,4,3,"Clear older history and recordings");menu.menu.add(0,5,4,"Watch updates");menu.menu.add(0,2,1,"Automatic update checks").apply{isCheckable=true;isChecked=r.automaticChecks};menu.setOnMenuItemClickListener{item->when(item.itemId){6->advanced();1->openUpdate();5->watchUpdates();4->confirmCleanup();3->startActivity(Intent(this,ExportActivity::class.java).putExtra(ExportActivity.NEW,true).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP));2->{r.automaticChecks=!r.automaticChecks;item.isChecked=r.automaticChecks}};true};menu.show()}
+ private fun advanced(){
+  val content=LinearLayout(this).apply{orientation=1;setPadding(dp(20),dp(8),dp(20),0)}
+  fun caption(value:String)=TextView(this).apply{text=value;setPadding(0,dp(8),0,dp(8))}
+  content.addView(caption("Recognition speeds"))
+  content.addView(caption("Normal speed (0%) is always included. Enter offsets from −3% to +3%. Changes apply to the next speed search."))
+  content.addView(caption("Number of speeds, including normal"))
+  val count=Spinner(this)
+  count.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,(1..RecognitionSpeeds.maximumCount).map{it.toString()})
+  content.addView(count)
+  val rows=LinearLayout(this).apply{orientation=1};content.addView(rows)
+  val fields=mutableListOf<EditText>()
+  var values=store.recognitionSpeeds.filter{it!=0.0}.toMutableList()
+  fun rebuild(total:Int){
+   fields.forEachIndexed{i,field->field.text.toString().toDoubleOrNull()?.let{values[i]=it}}
+   val candidates=(RecognitionSpeeds.defaults+listOf(-3.0,3.0,0.5,1.0,-1.0,2.5,-2.0)).filter{it!=0.0}
+   while(values.size<total-1)values.add(candidates.first{it !in values})
+   rows.removeAllViews();fields.clear()
+   rows.addView(caption("0% · normal speed"))
+   repeat(total-1){i->
+    rows.addView(caption("Speed ${i+2} (%)"))
+    val field=EditText(this).apply{
+     inputType=android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL or android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
+     setSingleLine();setText(RecognitionSpeeds.label(values[i]));contentDescription="Speed ${i+2}, percent offset"
+    };fields.add(field);rows.addView(field)
+   }
+  }
+  count.setSelection(store.recognitionSpeeds.size-1)
+  count.onItemSelectedListener=object:AdapterView.OnItemSelectedListener{
+   override fun onItemSelected(parent:AdapterView<*>?,view:View?,position:Int,id:Long){rebuild(position+1)}
+   override fun onNothingSelected(parent:AdapterView<*>?){}
+  }
+  rebuild(store.recognitionSpeeds.size)
+  val scroll=ScrollView(this).apply{addView(content)}
+  val dialog=android.app.AlertDialog.Builder(this).setTitle("Advanced").setView(scroll)
+   .setPositiveButton("Save",null).setNegativeButton("Cancel",null).setNeutralButton("Reset to six",null).create()
+  dialog.setOnShowListener{
+   dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener{
+    val result=runCatching{RecognitionSpeeds.validate(listOf(0.0)+fields.map{it.text.toString().trim().toDoubleOrNull()?:error("Enter a percentage for every speed")})}
+    result.onSuccess{store.recognitionSpeeds=it;dialog.dismiss()}.onFailure{Toast.makeText(this,it.message?:"Check the speed values",Toast.LENGTH_LONG).show()}
+   }
+   dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener{
+    fields.clear();values=RecognitionSpeeds.defaults.filter{it!=0.0}.toMutableList();count.setSelection(5);rebuild(6)
+   }
+  }
+  dialog.show()
+ }
  private fun confirmCleanup(){
   android.app.AlertDialog.Builder(this)
    .setTitle("Clear older history and recordings?")

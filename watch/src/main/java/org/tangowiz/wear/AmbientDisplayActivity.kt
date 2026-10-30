@@ -29,9 +29,12 @@ class AmbientDisplayActivity:ComponentActivity(){
  private var lowBit=false
  private var burnIn=false
  private var permissionAsked=false
+ private var renderedMatch=""
+ private var renderedConfident=false
+ private fun matchKey()=WatchCache.state.optJSONObject("best")?.let{listOf("id","orchestra","title","singer","year").joinToString("|"){field->it.optString(field)}}?:""
  private var started=false
  private val handler=Handler(Looper.getMainLooper())
- private val changed:()->Unit={runOnUiThread{if(started){if(!DisplaySession.enabled(this))finish() else if(!ambient)render()}}}
+ private val changed:()->Unit={runOnUiThread{if(started){if(!DisplaySession.enabled(this))finish() else if(!ambient||((WatchCache.state.optJSONObject("best")?.optInt("percent")?:0)>=70&&(matchKey()!=renderedMatch||!renderedConfident)))render()}}}
  private val minute=object:Runnable{override fun run(){if(started&&!ambient){render();scheduleMinute()}}}
  private val callbacks=object:AmbientLifecycleObserver.AmbientLifecycleCallback{
   override fun onEnterAmbient(ambientDetails:AmbientLifecycleObserver.AmbientDetails){ambient=true;lowBit=ambientDetails.deviceHasLowBitAmbient;burnIn=ambientDetails.burnInProtectionRequired;handler.removeCallbacks(minute);render()}
@@ -71,6 +74,8 @@ class AmbientDisplayActivity:ComponentActivity(){
  private fun uncertain(raw:String)=if(raw.contains(" ?"))"? "+raw.removeSuffix(" ?") else raw
  private fun render(){
   if(!::content.isInitialized)return
+  renderedMatch=matchKey()
+  renderedConfident=(WatchCache.state.optJSONObject("best")?.optInt("percent")?:0)>=70
   clock.text=LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
   val stale=WatchCache.stale();val name=uncertain(WatchCache.orchestra())
   orchestra.showName(if(stale&&name!="—"&&!name.startsWith("?"))"? $name" else name,WatchCache.keyword(),WatchCache.fullOrchestra())

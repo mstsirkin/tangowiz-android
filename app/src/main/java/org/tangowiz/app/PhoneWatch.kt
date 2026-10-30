@@ -57,7 +57,8 @@ object PhoneWatch {
   val live=LiveState.current
   if(pendingListening==live.listening||live.exited)pendingListening=null
   val key="${live.listening}|${live.error}|${live.resident}|$engineReady"
-  val confident=live.listening&&live.error.isEmpty()&&(live.best?.confidence?:0)>=70
+  val displayPercent=live.best?.let{ConfidenceCalibration.percent(ResourceStore(context).current(),it.score)}?:0
+  val confident=live.listening&&live.error.isEmpty()&&displayPercent>=70
   val decision=pushPolicy.observe(SystemClock.elapsedRealtime(),Store(context).watchUpdateInterval,key,confident,force)
   if(decision==WatchPushPolicy.Decision.SKIP)return
   if(decision==WatchPushPolicy.Decision.NEWLY_CONFIDENT)urgentState.set(true)
