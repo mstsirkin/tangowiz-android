@@ -1,0 +1,71 @@
+{
+  "state": "complete",
+  "cases": [
+    {
+      "mode": "default",
+      "interval": "2",
+      "completed": 2,
+      "accepted": 1,
+      "errors": [],
+      "fully_drained": true
+    },
+    {
+      "mode": "baseline",
+      "interval": "30",
+      "completed": 0,
+      "accepted": 0,
+      "errors": [],
+      "fully_drained": true
+    }
+  ],
+  "physical_phone_timing": false,
+  "emulator": "Android API 35 google_apis x86_64, 4 CPU, 4096 MB RAM",
+  "apk_sha256": {
+    "app-debug.apk": "17697014921cfb9f4818cf1421d1baba6e5b001c2361d9437e7acfbb8e3a846e",
+    "app-debug-androidTest.apk": "a329a945df3704dbf9aa2b7f654e33e5180e668a288a06efd8fb8cb412b45a55"
+  },
+  "runner_sha256": "aa3ffa33a7f19282b15c57d0b31a7595727f49868d041a53988833317d47558b",
+  "application_id": "org.tangowiz.app",
+  "test_application_id": "org.tangowiz.app.test",
+  "jvm_tests": 45,
+  "jvm_failures": 0,
+  "fresh_default_ui_gate": "passed",
+  "busy_retry_regression": "First failed: expected 2.5, actual 4.0; identical test passed after half-second busy delay",
+  "source_sha256": {
+    "app/src/main/java/org/tangowiz/app/DjPopularity.kt": "1ced60fc7b14f598ef191ab8e92ec8f8e9c280d01a96967871f17cf3b0dc00ff",
+    "app/src/main/java/org/tangowiz/app/LatestApk.kt": "01cd72788b6c5d1f47ff52d2eac7768392a7717535e5fe45d498a0120cf47f0d",
+    "app/src/main/java/org/tangowiz/app/WatchPushPolicy.java": "505fcb1ff45facbc8e44489b2372a197716a8ba626e5196efa95c80bc776b152",
+    "app/src/main/java/org/tangowiz/app/ExportActivity.kt": "5b29b194ce5983ab18d98db418c481d5897386f149e56aced6f6f42f57f7afb4",
+    "app/src/main/java/org/tangowiz/app/ResourceDownloadService.kt": "666a99a0629d35224af267f4213628783f29b1327e34692e3c3cb13ff505a96b",
+    "app/src/main/java/org/tangowiz/app/ExportJobs.kt": "bb921e1969cc4ada16219d1bd16a685884439df0bbe33fe55061dab79bf9d4c3",
+    "app/src/main/java/org/tangowiz/app/DownloadReadWatchdog.java": "2f0947adbbe8309f2f3697ec287ffce7f36c6682a8c15e4a7378c0a664d74fce",
+    "app/src/main/java/org/tangowiz/app/ConfidenceVisibility.java": "82e1972e0e60deb5ef039d447b934494e55dac9af87604b13f7af016975a4206",
+    "app/src/main/java/org/tangowiz/app/DownloadSocketFactory.java": "78e1c8ff7679083277a9e4258e97a010318bb8732a2f4822e919da5d31cb1fe6",
+    "app/src/main/java/org/tangowiz/app/WatchAudioInput.kt": "a8d1df133cfb8bb02b7a2706f4b5113ea745f6ec9b1febbd7dc465362f9d0f34",
+    "app/src/main/java/org/tangowiz/app/SongEndPredictor.java": "93dedbfb1070375c5d7f9d15d5fe45e8c988db4ea61c7752203a41d61279ad4a",
+    "app/src/main/java/org/tangowiz/app/ExportService.kt": "208abc6b304ce34e2c905afa01ca962bc54743e3392b8181efbaf1b52ea716ea",
+    "app/src/main/java/org/tangowiz/app/SetupActivity.kt": "e39dadaf7ed3e2987a29703378b26975b9996285dc0db2d7b095fc35139da146",
+    "app/src/main/java/org/tangowiz/app/DjPriorTable.java": "a4490e0b8237d161bdc636f9378823d86b78dde247cd766399c2e421360513b6",
+    "app/src/main/java/org/tangowiz/app/SignalGate.kt": "ce0cb296c4880f0746132a4d6e677945db7e8dc0b8394de4ec30f2bbd2ba0ee8",
+    "app/src/main/java/org/tangowiz/app/ExportProvider.kt": "63cc23774c3729eb5645c10d53180aac91cae1fdb7ca22410555f963c5f0d78e",
+    "app/src/main/java/org/tangowiz/app/Candidates.kt": "ec68e2f25581561266aa71f94f1d4343c488b2d2c23fe098c950b4d1b4679626",
+    "app/src/main/java/org/tangowiz/app/FallbackMatcher.kt": "6f34e781b8d4b0b1765cf48e06f4d731d950790436dde58a198b5f758251781f",
+    "app/src/main/java/org/tangowiz/app/FingerprintOutput.java": "9761679f20156724512200d708b1c1192598122e1bb55210fa7b403263d35c80",
+    "app/src/main/java/org/tangowiz/app/RecognitionSpeeds.kt": "45aa63aaa4c5706aa616085ffa3955cca22dbe66e440531dcb2b33994f20f7d6",
+    "app/src/main/java/org/tangowiz/app/RecognitionService.kt": "04e7dc9cc875072b92180e2c3c542c754454326a800b4c9378a13c7a529ff820",
+    "app/src/main/java/org/tangowiz/app/Resources.kt": "4a02d957efc68a890ec5cae3c1ce89a500a62f37292997910ffc38fa84a29719",
+    "app/src/main/java/org/tangowiz/app/NativeEngine.kt": "df5f79e7023fa78668249584b4a622a5672690f3c0a78d8d6b54ceb1687511b7",
+    "app/src/main/java/org/tangowiz/app/SessionFiles.kt": "8e5a7036ea0ee2786d7a0678dd2d49d1eac2ec525cd961813fb58907d5a90803",
+    "app/src/main/java/org/tangowiz/app/ConfidenceCalibration.kt": "8158a9f9de0a0209e1e956cd3393c81c45bf5480c1bbdca4a27eb26b0b04b97c",
+    "app/src/main/java/org/tangowiz/app/AdaptiveRecognizer.kt": "fde3a4679c8f5e156a86a1e89e78b90c66d842a6bd0b87c539cf2ccc0cf13b0d",
+    "app/src/main/java/org/tangowiz/app/PhoneWatch.kt": "32989ed8d521cb0e5882a18f4162070600d85645256d27e35e5315d927d640a3",
+    "app/src/main/java/org/tangowiz/app/Store.kt": "8623ff4f706c1a1e314cc47e92fa454356295e64af5375d6f3e20c213525f009",
+    "app/src/main/java/org/tangowiz/app/CatalogKeywords.kt": "70d8d826a41281c1010f8a56471e7cc4758a6d53ea887ed64bbd2fa0f1b5bf4b",
+    "app/src/main/java/org/tangowiz/app/PhoneWearService.kt": "d2b285d8df011341674d4a52d37b035a185d714b6298a82f274083d982b40c73",
+    "app/src/main/java/org/tangowiz/app/MainActivity.kt": "f0ed3499a56081e600b01394da3379782286bb78cbd99795880aa5fe5fd0887e",
+    "app/src/main/java/org/tangowiz/app/DisplayConfidence.java": "ee967135df5333eb41e00bbfcadc2583b2f679c03df9843e01b9d6e30a639778",
+    "app/src/main/java/org/tangowiz/app/ParallelArchive.kt": "cba9aea6b8a10352e631518d879a90ed1096066347093b1dcdcb25720bc827b5",
+    "app/src/main/java/org/tangowiz/app/RecentAudioWindow.java": "ae40195abf769691c15b12d1510808ea547ca5de787faa96306296b8febaf453",
+    "app/src/main/java/org/tangowiz/app/FallbackTiming.java": "81e2633580a6496692bbf7f7733672d67e9712d8ca72ed450f1ad15cd59f9f3d"
+  }
+}

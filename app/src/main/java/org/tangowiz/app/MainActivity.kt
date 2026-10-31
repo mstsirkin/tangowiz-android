@@ -50,12 +50,12 @@ class MainActivity:Activity(){
   root.setOnApplyWindowInsetsListener{v,insets-> if(Build.VERSION.SDK_INT>=30){val bars=insets.getInsets(android.view.WindowInsets.Type.systemBars());v.setPadding(dp(16)+bars.left,dp(12)+bars.top,dp(16)+bars.right,dp(12)+bars.bottom)}else{v.setPadding(dp(16)+insets.systemWindowInsetLeft,dp(12)+insets.systemWindowInsetTop,dp(16)+insets.systemWindowInsetRight,dp(12)+insets.systemWindowInsetBottom)};insets}
   val toolbar=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL};root.addView(toolbar)
   toolbar.addView(ImageView(this).apply{setImageResource(org.tangowiz.app.R.drawable.app_icon);background=box(Color.rgb(245,236,220),12f);setPadding(dp(3),dp(3),dp(3),dp(3));contentDescription="TangoWiz"},LinearLayout.LayoutParams(dp(48),dp(48)))
-  toolbar.addView(View(this),LinearLayout.LayoutParams(0,1,1f))
   val audio=icon("●","Save audio"){PhoneWatch.setLocal(this,org.json.JSONObject().put("audio",!store.audio));render()};audio.id=100;toolbar.addView(audio)
   val debug=icon("🐞","Timing debug"){PhoneWatch.setLocal(this,org.json.JSONObject().put("timing",!store.timing));render()};debug.id=101;toolbar.addView(debug)
   val watch=icon("⌚","Use watch microphone"){PhoneWatch.setLocal(this,org.json.JSONObject().put("microphone",if(store.microphone=="watch")"phone" else "watch").put("listening",true))};watch.id=102;toolbar.addView(watch)
   toolbar.addView(icon("⋮","More options"){vMenu(toolbar)})
-  val dj=icon("DJ","DJ popularity boost"){PhoneWatch.setLocal(this,org.json.JSONObject().put("djEnabled",!store.dj))};dj.id=104;dj.textSize=17f;root.addView(dj,LinearLayout.LayoutParams(dp(60),dp(48)))
+  val dj=icon("DJ","DJ popularity boost"){PhoneWatch.setLocal(this,org.json.JSONObject().put("djEnabled",!store.dj))};dj.id=104;dj.textSize=17f;toolbar.addView(dj,1)
+  for(i in 1 until toolbar.childCount){val control=toolbar.getChildAt(i);if(control is Button){control.minWidth=0;control.minimumWidth=0;control.setPadding(0,0,0,0);control.layoutParams=LinearLayout.LayoutParams(0,dp(48),1f)}}
   phase=text("",14f);root.addView(phase)
   best=LinearLayout(this).apply{orientation=1;setPadding(dp(8),dp(14),dp(8),dp(14));background=box(Color.rgb(34,39,54))};root.addView(best,LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(10)})
   runner=LinearLayout(this).apply{orientation=1;setPadding(dp(8),dp(8),dp(8),dp(8));background=box(Color.rgb(28,32,45))};root.addView(runner,LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(10)})
@@ -71,12 +71,22 @@ class MainActivity:Activity(){
  override fun onNewIntent(value:Intent){super.onNewIntent(value);intent=value;if(ensureResources())handleWatchLaunch()}
  private fun ensureResources():Boolean{if(ResourceStore(this).current()!=null)return true;startActivity(Intent(this,SetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP));finish();return false}
  private fun openUpdate(){startActivity(Intent(this,SetupActivity::class.java).putExtra(SetupActivity.UPDATE,true))}
- private fun vMenu(anchor:View){val r=ResourceStore(this);val menu=PopupMenu(this,anchor);menu.menu.add(0,6,5,"Advanced");menu.menu.add(0,1,0,"Update");menu.menu.add(0,3,2,"Export debug info");menu.menu.add(0,4,3,"Clear older history and recordings");menu.menu.add(0,5,4,"Watch updates");menu.menu.add(0,2,1,"Automatic update checks").apply{isCheckable=true;isChecked=r.automaticChecks};menu.setOnMenuItemClickListener{item->when(item.itemId){6->advanced();1->openUpdate();5->watchUpdates();4->confirmCleanup();3->startActivity(Intent(this,ExportActivity::class.java).putExtra(ExportActivity.NEW,true).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP));2->{r.automaticChecks=!r.automaticChecks;item.isChecked=r.automaticChecks}};true};menu.show()}
+ private fun replayAlgorithm(){
+  val labels=arrayOf("Legacy", "Adaptive: 1 second", "Adaptive: 2 seconds", "Adaptive: 2.5 seconds", "Adaptive: 3 seconds")
+  val intervals=listOf(1.0,2.0,2.5,3.0)
+  val current=if(store.adaptiveRecognition)intervals.indexOf(store.adaptiveInterval)+1 else 0
+  android.app.AlertDialog.Builder(this).setTitle("Recognition algorithm").setSingleChoiceItems(labels,current){dialog,which->
+   store.adaptiveRecognition=which!=0;if(which!=0)store.adaptiveInterval=intervals[which-1]
+   if(LiveState.current.listening)startService(Intent(this,RecognitionService::class.java).setAction(RecognitionService.RESTART))
+   dialog.dismiss()
+  }.setNegativeButton("Cancel",null).show()
+ }
+ private fun vMenu(anchor:View){val r=ResourceStore(this);val menu=PopupMenu(this,anchor);menu.menu.add(0,7,6,"Recognition algorithm: "+if(store.adaptiveRecognition)"Adaptive (${store.adaptiveInterval}s)" else "Legacy");menu.menu.add(0,6,5,"Advanced");menu.menu.add(0,1,0,"Update");menu.menu.add(0,3,2,"Export debug info");menu.menu.add(0,4,3,"Clear older history and recordings");menu.menu.add(0,5,4,"Watch updates");menu.menu.add(0,2,1,"Automatic update checks").apply{isCheckable=true;isChecked=r.automaticChecks};menu.setOnMenuItemClickListener{item->when(item.itemId){7->replayAlgorithm();6->advanced();1->openUpdate();5->watchUpdates();4->confirmCleanup();3->startActivity(Intent(this,ExportActivity::class.java).putExtra(ExportActivity.NEW,true).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP));2->{r.automaticChecks=!r.automaticChecks;item.isChecked=r.automaticChecks}};true};menu.show()}
  private fun advanced(){
   val content=LinearLayout(this).apply{orientation=1;setPadding(dp(20),dp(8),dp(20),0)}
   fun caption(value:String)=TextView(this).apply{text=value;setPadding(0,dp(8),0,dp(8))}
-  content.addView(caption("Recognition speeds"))
-  content.addView(caption("Normal speed (0%) is always included. Enter offsets from −3% to +3%. Changes apply to the next speed search."))
+  content.addView(caption("Legacy recognition speeds"))
+  content.addView(caption("Adaptive searches −6% to +5% automatically. These offsets apply only to Legacy. Normal speed (0%) is always included. Enter offsets from −3% to +3%. Changes apply to the next speed search."))
   content.addView(caption("Number of speeds, including normal"))
   val count=Spinner(this)
   count.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,(1..RecognitionSpeeds.maximumCount).map{it.toString()})
@@ -161,13 +171,13 @@ class MainActivity:Activity(){
  private fun visibleLabel(value:String)=if(value.contains(" ?"))"? "+value.removeSuffix(" ?") else value
  private fun limited(value:String,size:Float,lines:Int)=text(visibleLabel(value),size).apply{maxLines=lines;ellipsize=android.text.TextUtils.TruncateAt.END;contentDescription=value}
  private fun details(c:Candidate){val full=listOf(c.display("orchestra"),c.display("title"),c.display("singer"),c.display("year")).filter{it.isNotEmpty()}.joinToString("\n\n")+"\n\nDJ "+(if(c.djRequested&&c.djAvailable)"on" else if(!c.djAvailable)"unavailable" else "off")+" · Acoustic %.4f · DJ +%.2f%%".format(c.score,c.djPercent*100);val scroll=ScrollView(this).apply{addView(text(full,19f))};android.app.AlertDialog.Builder(this).setView(scroll).setPositiveButton("Close",null).show()}
- private fun candidate(panel:LinearLayout,c:Candidate?,primary:Boolean){panel.removeAllViews();panel.setOnClickListener(null);if(c==null){panel.addView(text(if(primary) "♪" else "…",if(primary)32f else 20f));return}
+ private fun candidate(panel:LinearLayout,c:Candidate?,primary:Boolean){panel.removeAllViews();panel.setOnClickListener(null);if(c==null||!ConfidenceVisibility.visible(ConfidenceCalibration.percent(ResourceStore(this).current(),c.rankingScore))){panel.visibility=View.GONE;return};panel.visibility=View.VISIBLE
   panel.setOnClickListener{details(c)}
   val percent=ConfidenceCalibration.percent(ResourceStore(this).current(),c.rankingScore)
   val row=LinearLayout(this);row.addView(limited(c.display("orchestra").ifEmpty{"?"},if(primary)25f else 18f,2).apply{setTypeface(null,Typeface.BOLD)},LinearLayout.LayoutParams(0,-2,1f));row.addView(text("${percent}%",if(primary)25f else 18f).apply{setTextColor(Color.rgb((220*(1-percent/100f)).toInt().coerceIn(0,220),170,95));contentDescription="Experimental confidence estimate ${percent} percent"});panel.addView(row);panel.addView(limited(c.display("title"),if(primary)22f else 17f,3));val detail=listOf(c.display("singer"),c.display("year")).filter{it.isNotEmpty()}.joinToString(" · ");if(detail.isNotEmpty())panel.addView(limited(detail,14f,2))
  }
 
  private fun render(){if(!::store.isInitialized)return;findViewById<Button>(104)?.apply{val available=PhoneWatch.djAvailable();isEnabled=available;isSelected=store.dj&&available;alpha=if(available)1f else .35f;background=box(if(isSelected)Color.rgb(43,100,80) else Color.rgb(43,47,64));contentDescription=if(!available)"DJ unavailable: library has no valid DJ data" else if(isSelected)"DJ on: turn off popularity boost" else "DJ off: turn on popularity boost";tooltipText=contentDescription};findViewById<Button>(102)?.apply{alpha=if(store.microphone=="watch")1f else .45f;background=box(if(store.microphone=="watch")Color.rgb(43,100,80) else Color.rgb(43,47,64));contentDescription=if(store.microphone=="watch")"Switch to phone microphone" else "Use watch microphone"};val s=LiveState.current;findViewById<Button>(103)?.apply{isEnabled=s.listening;alpha=if(s.listening)1f else .45f};candidate(best,s.best,true);candidate(runner,s.second,false);listen.text=if(s.listening)"Ⅱ" else "▶";listen.contentDescription=if(s.listening)"Pause identification" else if(s.resident)"Resume identification" else "Start listening";phase.text=if(s.error.isNotEmpty())s.error else if(s.listening)"${s.phase}  ${s.seconds.toInt()}s" else if(s.resident)"Ⅱ" else "";findViewById<Button>(100).apply{alpha=if(store.audio)1f else .45f;setTextColor(if(store.audio)Color.rgb(255,85,100) else white)};findViewById<Button>(101).apply{alpha=if(store.timing)1f else .45f;background=box(if(store.timing)Color.rgb(43,100,80) else Color.rgb(43,47,64))}
-  val version=LiveState.historyVersion.get();if(version!=historyVersion&&!loadingHistory){loadingHistory=true;Thread{val rows=store.history();val grouped=RecordingHistory.consecutive(rows);runOnUiThread{loadingHistory=false;if(LiveState.historyVersion.get()==version){historyRows=grouped.asReversed().take(200);historyVersion=version;historyAdapter.notifyDataSetChanged()}else render()}}.start()}
+  val version=LiveState.historyVersion.get();if(version!=historyVersion&&!loadingHistory){loadingHistory=true;Thread{val rows=store.history();val grouped=RecordingHistory.consecutive(rows.filter{ConfidenceVisibility.visible(it.optInt("confidence_score",0))});runOnUiThread{loadingHistory=false;if(LiveState.historyVersion.get()==version){historyRows=grouped.asReversed().take(200);historyVersion=version;historyAdapter.notifyDataSetChanged()}else render()}}.start()}
  }
 }

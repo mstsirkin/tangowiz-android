@@ -19,6 +19,8 @@ class Store(val context:Context) {
  val root=File(context.filesDir,"logs").apply{mkdirs()}
  val history=File(root,"history.jsonl")
  val prefs=context.getSharedPreferences("settings",0)
+ var adaptiveRecognition:Boolean get()=prefs.getBoolean("adaptive_recognition",true);set(v){prefs.edit().putBoolean("adaptive_recognition",v).commit()}
+ var adaptiveInterval:Double get()=prefs.getString("adaptive_interval","2.0")!!.toDouble();set(v){require(v in listOf(1.0,2.0,2.5,3.0));prefs.edit().putString("adaptive_interval",v.toString()).commit()}
  var recognitionSpeeds:List<Double>
   get()=runCatching{RecognitionSpeeds.parse(prefs.getString("recognition_speed_offsets",null)?:error("Unset"))}.getOrElse{RecognitionSpeeds.defaults}
   set(v){prefs.edit().putString("recognition_speed_offsets",RecognitionSpeeds.validate(v).joinToString(",")).commit()}
@@ -30,6 +32,7 @@ class Store(val context:Context) {
  fun append(file:File,json:JSONObject)=synchronized(SessionFiles.lock){file.appendText(json.toString()+"\n")}
  fun history():List<JSONObject> = synchronized(SessionFiles.lock){if(!history.exists()) emptyList() else java.io.RandomAccessFile(history,"r").use{f->val start=(f.length()-512000).coerceAtLeast(0);f.seek(start);val bytes=ByteArray((f.length()-start).toInt());f.readFully(bytes);bytes.toString(Charsets.UTF_8).lineSequence().mapNotNull{runCatching{JSONObject(it)}.getOrNull()}.toList().takeLast(1000)}}
  fun result(c:Candidate,second:Candidate?, seconds:Double,session:String,rawResult:JSONObject?=null){
+  if(!ConfidenceVisibility.visible(c.confidence))return
   append(history,JSONObject().put("time",Instant.now().toString()).put("session",session).put("audio_seconds",seconds).put("id",c.id).put("sourceIds",JSONArray(c.aliases.sorted())).put("metadataAlternatives",c.alternativesJson()).put("presentationContributors",JSONArray(c.presentationContributors.map{raw->val contributor=JSONObject(raw);JSONObject().put("id",contributor.optString("id")).put("sourceIds",contributor.optJSONArray("sourceIds")?:JSONArray()).put("score",contributor.optDouble("score",0.0)).put("speed",contributor.optDouble("speed",1.0))})).put("orchestra",c.orchestra).put("title",c.title).put("singer",c.singer).put("year",c.year).put("score",c.score).put("ranking_score",c.rankingScore).put("dj",DjPopularity.record(c)).put("confidence_score",c.confidence).put("speed",c.speed).put("state",if(c.confidence>=70) "strong" else "tentative").put("runner_up",second?.id ?: ""));if(rawResult!=null){val dir=File(root,session).apply{mkdirs()};append(File(dir,"matches.jsonl"),JSONObject().put("time",Instant.now().toString()).put("audio_seconds",seconds).put("result",rawResult))};LiveState.historyVersion.incrementAndGet()
  }
  fun export(progress:(ExportProgress)->Unit={},cancelled:()->Boolean={false}):File {

@@ -1,0 +1,13 @@
+2026-10-31 — Adaptive wide range is the application default
+
+User authorized committing wide-range recognition as the default. Adaptive searches -6% through +5% in half-percent steps (23 points). Normal speed always runs, and the accepted alternate continues live. Consecutive outer batches are retained; near-normal searches occur every other turn. Search budgets are five alternatives with normal alone and four with a selected alternate. Two background workers retain independent model/native state. Existing strong-match and song-end guards are preserved.
+
+Fresh/default settings select Adaptive with a two-second interval. Busy batches are checked again after half a second; new snapshots are taken only when a worker can start. Legacy and interval choices are available in the overflow menu and persist across launches. Legacy retains the previous narrow configurable speed list and 30-second fallback cadence. Saved library/model resources are unchanged.
+
+Carried forward the validated output-buffer rewind, the five-percent live/history gate and top-row DJ layout. The five-percent gate runs before DJ ranking so weak guesses cannot be promoted into the visible results by the boost. Existing raw history is preserved, with weak rows filtered from display.
+
+The new busy-retry regression first failed with expected next check 2.5 seconds versus actual 4.0 seconds, then passed unchanged after the timing fix. Full JVM suite: 45 tests, zero failures. Production-package emulator validation passed: a fresh install selected Adaptive at 2 seconds; the default path completed two batches, accepted -6%, and continued matching without worker errors. Explicit Legacy also passed feed/drain. UI assertions confirmed the default setting, the five-percent boundary and top-row DJ layout. These were 40-second functional replays on an API 35 x86_64 emulator, not physical-phone performance measurements. Emulator timing is not physical-phone performance.
+
+Reversion: revert this commit to restore the prior production implementation. The Legacy menu option provides a runtime fallback without a source rollback.
+
+For controlled replay validation, build the test APK with -PreplayRunner=org.tangowiz.app.FileReplayInstrumentation. Normal test builds retain the existing RecognitionInstrumentation runner. The production application ID and signing configuration are unchanged. No APK release is published by this source commit.
