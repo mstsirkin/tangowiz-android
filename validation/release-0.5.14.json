@@ -1,0 +1,28 @@
+{
+  "release": "0.5.14",
+  "application_id": "org.tangowiz.app",
+  "certificate_sha256": "7b5a096154dc754da64bf5077d07c11c158819987157b39424fde5928078d698",
+  "apk_sha256": "a4c5df115caa48c8a87b580f09b229d64af3783d32441756480901e238fb5223",
+  "ui_gate": "passed",
+  "jvm_tests": 45,
+  "jvm_failures": 0,
+  "cases": [
+    {
+      "mode": "default",
+      "fully_drained": true,
+      "completed": 2,
+      "accepted": 1,
+      "worker_errors": 0
+    },
+    {
+      "mode": "baseline",
+      "fully_drained": true,
+      "completed": 0,
+      "accepted": 0,
+      "worker_errors": 0
+    }
+  ],
+  "tested_actual_signed_release_apk": true,
+  "emulator": "API 35 x86_64, 4 CPU, 4096MB RAM",
+  "physical_phone_timing": false
+}

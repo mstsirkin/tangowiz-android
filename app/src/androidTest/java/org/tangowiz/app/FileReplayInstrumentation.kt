@@ -80,7 +80,7 @@ class FileReplayInstrumentation:Instrumentation(){
    store.adaptiveRecognition=oldMode;store.adaptiveInterval=oldInterval;store.microphone=oldMic;store.audio=oldAudio;store.timing=oldTiming
    runCatching{activity?.let{runOnMainSync{it.finish()}}}
    File(ctx.filesDir,"file-replay-report.json").writeText(report.toString(2))
-   finish(if(failure==null)0 else 1,Bundle().apply{putString("summary",JSONObject().put("status",report.optString("status")).put("input_audio_seconds",report.optDouble("input_audio_seconds")).toString())})
+   finish(if(failure==null)0 else 1,Bundle().apply{putString("full_report",report.toString());putString("summary",JSONObject().put("status",report.optString("status")).put("input_audio_seconds",report.optDouble("input_audio_seconds")).toString())})
   }
  }
 }
