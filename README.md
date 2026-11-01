@@ -64,3 +64,5 @@ Phone 0.5.11 adds **More options → Advanced** recognition speed settings. The 
 Phone 0.5.12 sends newly strong results (70% or higher on the displayed confidence scale) immediately, including after a manual reset, bypassing the regular watch update interval. This changes delivery timing only. Watch 0.5.10 also refreshes a changed strong match in the full-screen ambient display as it arrives; other ambient changes retain their usual scheduled updates. No forced screen wake or activity launch is added.
 
 Phone and watch 0.5.13 add optional **DJ** popularity ranking, controlled from either device and recorded in history. It is off by default and requires DJ data in an updated library ZIP. The small relative boost introduces no new acoustic threshold. See [DJ.md](DJ.md) for the data format, scoring and validation limits.
+
+Watch 0.5.14 replaces the modal Singer details window with a temporary full-name reveal in the existing singer line. A second tap, a different singer, leaving the view, or eight seconds closes the reveal. Orchestra/song updates remain visible throughout. No microphone, recognition algorithm or phone setting changes are involved.

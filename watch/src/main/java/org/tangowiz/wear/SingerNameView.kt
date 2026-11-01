@@ -1,31 +1,36 @@
 package org.tangowiz.wear
 
-import android.app.AlertDialog
+import android.os.SystemClock
 import android.content.Context
 import android.graphics.Typeface
 import android.text.*
 import android.text.style.AbsoluteSizeSpan
 import android.util.TypedValue
 import android.view.Gravity
-import android.widget.ScrollView
 import android.widget.TextView
 import org.tangowiz.link.DisplayNames
+import org.tangowiz.link.SingerCreditReveal
 
-/** A separate, secondary one-line credit; the full name stays available by tapping. */
+/** Tapping reveals the full credit inline for eight seconds without covering live recognition. */
 class SingerNameView(context:Context):TextView(context){
  private var full=""
  private var includeFirst=false
+ private val reveal=SingerCreditReveal()
+ private val expire=Runnable{fitCredit()}
  init{
   gravity=Gravity.CENTER;includeFontPadding=false;maxLines=1;ellipsize=TextUtils.TruncateAt.END
   setOnClickListener{
-   val credit=TextView(context).apply{text=full;textSize=18f;setPadding(20,16,20,16)}
-   AlertDialog.Builder(context).setTitle("Singer").setView(ScrollView(context).apply{addView(credit)}).setPositiveButton("Close",null).show()
+   val now=SystemClock.uptimeMillis();reveal.toggle(now);removeCallbacks(expire);fitCredit()
+   if(reveal.visible(now))postDelayed(expire,SingerCreditReveal.DURATION_MS)
   }
  }
- fun showCredit(value:String,firstName:Boolean){full=value;includeFirst=firstName;fitCredit()}
+ fun showCredit(value:String,firstName:Boolean){if(value!=full)removeCallbacks(expire);reveal.updateCredit(value);full=value;includeFirst=firstName;fitCredit()}
+ override fun onAttachedToWindow(){super.onAttachedToWindow();fitCredit()}
+ override fun onDetachedFromWindow(){removeCallbacks(expire);reveal.clear();super.onDetachedFromWindow()}
  override fun onSizeChanged(w:Int,h:Int,oldw:Int,oldh:Int){super.onSizeChanged(w,h,oldw,oldh);fitCredit()}
  private fun fitCredit(){
-  val display=DisplayNames.singer(full,includeFirst);val surname=if(includeFirst)DisplayNames.surname(full) else null
+  val showFirst=includeFirst||reveal.visible(SystemClock.uptimeMillis())
+  val display=DisplayNames.singer(full,showFirst);val surname=if(showFirst)DisplayNames.surname(full) else null
   val width=width-compoundPaddingLeft-compoundPaddingRight;val height=height-compoundPaddingTop-compoundPaddingBottom
   var styled:SpannableString?=null
   if(surname!=null&&width>0&&height>0){
@@ -41,6 +46,6 @@ class SingerNameView(context:Context):TextView(context){
   setTypeface(null,Typeface.NORMAL)
   if(styled!=null){setAutoSizeTextTypeWithDefaults(AUTO_SIZE_TEXT_TYPE_NONE);setTextSize(TypedValue.COMPLEX_UNIT_SP,12f);text=styled}
   else{setAutoSizeTextTypeUniformWithConfiguration(10,20,1,TypedValue.COMPLEX_UNIT_SP);text=display}
-  contentDescription="Singer: $full; tap for full credit"
+  contentDescription="Singer: $full; "+if(reveal.visible(SystemClock.uptimeMillis()))"tap to hide full credit" else "tap to show full credit temporarily"
  }
 }
