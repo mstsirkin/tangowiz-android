@@ -66,3 +66,5 @@ Phone 0.5.12 sends newly strong results (70% or higher on the displayed confiden
 Phone and watch 0.5.13 add optional **DJ** popularity ranking, controlled from either device and recorded in history. It is off by default and requires DJ data in an updated library ZIP. The small relative boost introduces no new acoustic threshold. See [DJ.md](DJ.md) for the data format, scoring and validation limits.
 
 Watch 0.5.14 replaces the modal Singer details window with a temporary full-name reveal in the existing singer line. A second tap, a different singer, leaving the view, or eight seconds closes the reveal. Orchestra/song updates remain visible throughout. No microphone, recognition algorithm or phone setting changes are involved.
+
+Watch 0.5.15 enlarges singer names to a preferred 26sp in a 36dp line, between the orchestra and song-title sizes. Optional first names also use larger type. The controls screen orchestra size increases to retain that hierarchy. Long credits can shrink to 22sp; the temporary inline reveal is preserved.

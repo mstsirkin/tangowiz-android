@@ -14,7 +14,7 @@ mkdir -p dist
 for module in "${modules[@]}"; do
  case "$module" in
   app) artifact="TangoWiz-0.5.14" ;;
-  watch) artifact="TangoWiz-Watch-0.5.14" ;;
+  watch) artifact="TangoWiz-Watch-0.5.15" ;;
   watchface) artifact="TangoWiz-Face-0.5.0" ;;
  esac
  input_apk="$module/build/outputs/apk/release/$module-release.apk"

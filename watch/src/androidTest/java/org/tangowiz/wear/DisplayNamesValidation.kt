@@ -12,6 +12,7 @@ import android.text.style.AbsoluteSizeSpan
 import android.view.View
 import android.view.ViewGroup
 import android.view.PixelCopy
+import android.widget.TextView
 import org.json.JSONArray
 import org.json.JSONObject
 import org.tangowiz.link.WearProtocol
@@ -43,8 +44,18 @@ object DisplayNamesValidation {
    File(ctx.filesDir,"names-$name.png").outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
   }
   fun views(root:View):List<View> = listOf(root)+if(root is ViewGroup)(0 until root.childCount).flatMap{views(root.getChildAt(it))} else emptyList()
+  fun dominantSize(view:TextView):Float {
+   val spans=(view.text as? Spanned)?.let{it.getSpans(0,it.length,AbsoluteSizeSpan::class.java)}?:emptyArray()
+   return maxOf(view.textSize,spans.maxOfOrNull{it.size.toFloat()}?:0f)
+  }
   fun singer()=views(display!!.window.decorView).filterIsInstance<SingerNameView>().single()
   fun orchestra()=views(display!!.window.decorView).filterIsInstance<OrchestraNameView>().single()
+  fun hierarchy(){
+   val title=views(display!!.window.decorView).filterIsInstance<TextView>().single{it.text.toString()==WatchCache.song()}
+   check(dominantSize(orchestra())>dominantSize(singer())){"Singer must stay smaller than orchestra"}
+   check(dominantSize(singer())>dominantSize(title)){"Singer must be larger than song title"}
+   check(singer().height>=singer().layout.height){"Larger singer line must not clip"}
+  }
   try{
    check(!WatchCache.capturing&&!DisplaySession.enabled(ctx)){"Do not interrupt an active display or capture"}
    changedPreferences=true
@@ -71,6 +82,7 @@ object DisplayNamesValidation {
     check(singer().layout.lineCount==1&&singer().layout.getEllipsisCount(0)==0)
     check(orchestra().layout.height<=orchestra().height&&singer().layout.height<=singer().height)
    }
+   ui{hierarchy()}
    screenshot("surname")
    checks.put("short orchestra and singer surname fit the actual display; full credits remain accessible")
    ui{DisplayPreferences.singerFirstName=true;WatchCache.changed()}
@@ -81,8 +93,10 @@ object DisplayNamesValidation {
     check(text.subSequence(text.getSpanStart(span),text.getSpanEnd(span)).toString()=="Podestá")
     check(span.size>singer.textSize&&singer.layout.lineCount==1&&singer.layout.getEllipsisCount(0)==0)
    }
+   ui{hierarchy()}
    screenshot("full-singer")
    checks.put("optional first name is smaller than the surname and both fit one line")
+   checks.put("painted singer name is larger than song title and smaller than orchestra, with no line clipping")
    ui{DisplayPreferences.showSinger=false;WatchCache.changed()}
    frame()
    ui{check(singer().visibility==View.GONE)}
