@@ -233,7 +233,18 @@ class RecognitionService:Service(){
     val trim=(earliest-baseSample).toInt().coerceAtLeast(0);if(trim>16000){System.arraycopy(pcmHistory,trim,pcmHistory,0,pcmSize-trim);pcmSize-=trim;baseSample+=trim}
     // Buffered fingerprint stream is flushed at session close.
     if(!active(token))break
-    if(adaptive!=null){result=adaptive.update(pcmHistory,pcmSize,baseSample,samples,(nextFrame[6]-1)*.5,result,native,signalGeneration.get(),fallbackEarliestSample,audibleWindow);val c=result?.optJSONArray("candidates")?.optJSONObject(0);if(c!=null)songEnd.observe((nextFrame[6]-1)*.5,c.optString("groupId",c.optString("id")),c.optDouble("score"),c.optDouble("referenceSeconds"),c.optDouble("referenceEndSeconds"),result!!.optInt("frames"),c.optDouble("speed",1.0))}
+    if(adaptive!=null){
+     val queryOffset=(nextFrame[6]-1)*.5
+     result=adaptive.update(pcmHistory,pcmSize,baseSample,samples,queryOffset,result,native,signalGeneration.get(),fallbackEarliestSample,audibleWindow)
+     if(result?.optBoolean("normalRecovery")==true){
+      // Rebased context belongs to a new hypothesis; old worker results and end predictions cannot survive it.
+      signalGeneration.incrementAndGet();fallbackResult.set(null);songEnd.clear()
+      fallbackEarliestSample=maxOf(fallbackEarliestSample,((queryOffset-(RecentNormalRecovery.RECENT_FRAMES-1)*.5)*8000).toLong())
+      lastLogged=null;logSecond=-60.0
+     }
+     val c=result?.optJSONArray("candidates")?.optJSONObject(0)
+     if(c!=null)songEnd.observe(queryOffset,c.optString("groupId",c.optString("id")),c.optDouble("score"),c.optDouble("referenceSeconds"),c.optDouble("referenceEndSeconds"),result!!.optInt("frames"),c.optDouble("speed",1.0))
+    }
     val candidates=OrchestraPresentation.candidates(result)
     var presentationPool=candidates
     val nativeBest=candidates.firstOrNull();var selectedResult=result

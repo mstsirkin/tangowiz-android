@@ -1,5 +1,46 @@
 # TangoWiz Android
 
+## Release validation
+
+Every phone, watch and watchface release runs `:app:validateRecognitionRelease`
+before APK packaging, including direct Gradle builds and `build_apk.sh`. The gate
+runs the full release JVM suite and recompiles the current production C++ matcher
+and Java recovery policy for native A/B replay. It requires the recent-normal
+recovery gains for Un amor and El mate amargo, checks other transitions, preserves
+previously strong matches, and rejects recovery on two unmatched controls.
+
+Run the gate directly with `./gradlew :app:validateRecognitionRelease`. It always
+reruns; a cached or historical report is not accepted. Missing or changed
+fixtures, a lost recovery gain, worker errors, or a strong-match regression fail
+the build. Debug builds do not require the private native corpus.
+
+The unmatched recordings are behavior controls, not independently labeled
+negative examples. A new detection there is a review case: verify the recording
+and version the fixture expectations if it is a real improvement, rather than
+calling it a false positive or silently weakening the gate.
+
+The owner-only fixture configuration is
+`~/.config/tangowiz/recognition-release-fixtures.json`, or the path selected by
+`TANGOWIZ_RELEASE_FIXTURES`. Its version-1 fields are `fixture_manifest`,
+`fixture_manifest_sha256`, `catalog_path`, `progress_tools`, and `java_home`.
+The private manifest pins all six physical-phone embedding files, frozen legacy
+native sources, the historical model provenance, and catalog checksum. No
+microphone recordings or private fixture files belong in this repository.
+Provision the existing private corpus on a release machine before building;
+the gate fails rather than downloading or publishing private data automatically.
+Host requirements are Linux x86-64, Python 3 with NumPy, g++, JDK 17, and the
+configured progress tools with a systemd user session.
+
+Each native run is registered in the private progress dashboard and executed in
+a durable user service with at most two physical host cores. Reports under
+`build/reports/recognition-release/` include fresh source and fixture signatures.
+Sources changing during a run invalidate the result. The corpus is a pinned
+historical algorithm regression, not a physical-phone timing or broad accuracy
+benchmark. Changed Android APKs still need the separate emulator release checks
+before distribution.
+
+## Application
+
 Current source defaults to **Adaptive** recognition over **−6% through +5% in half-percent steps** (23 points including normal). Normal speed runs continuously; an accepted alternate speed also runs continuously. Consecutive search batches rotate over the remaining points, with extra checks near normal. Searches start every two seconds while the live match is weak; a busy worker is rechecked every half-second, without queuing old snapshots. **More options → Recognition algorithm** selects Adaptive or Legacy and the adaptive interval. Legacy retains its configurable narrow speed list and 30-second fallback interval. Explicit choices persist across launches.
 
 Candidates below displayed 5% are excluded before DJ ranking and from live results and new history; old sub-five-percent history is hidden. DJ shares the top toolbar with the application icon. See [recognition-change-log.txt](recognition-change-log.txt) for the default change and validation.
@@ -68,3 +109,5 @@ Phone and watch 0.5.13 add optional **DJ** popularity ranking, controlled from e
 Watch 0.5.14 replaces the modal Singer details window with a temporary full-name reveal in the existing singer line. A second tap, a different singer, leaving the view, or eight seconds closes the reveal. Orchestra/song updates remain visible throughout. No microphone, recognition algorithm or phone setting changes are involved.
 
 Watch 0.5.15 enlarges singer names to a preferred 26sp in a 36dp line, between the orchestra and song-title sizes. Optional first names also use larger type. The controls screen orchestra size increases to retain that hierarchy. Long credits can shrink to 22sp; the temporary inline reveal is preserved.
+
+The mandatory release gate also checks the saved physical-phone Solo Tango vals queries. The private release configuration must include `additional_field_fixtures` (manifest path/hash and pinned catalog path/hash). Missing or altered fixtures fail validation. These queries are independent of the album reference fingerprints and cover Vals de verano, Mujeres Vals, and Vals de invierno. Resource-index releases must run `tools/validate_field_fixtures.py` against the candidate catalog and current compiled native bridge, in addition to the existing recognition regression suite.

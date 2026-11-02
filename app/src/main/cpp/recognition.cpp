@@ -74,7 +74,10 @@ std::string Engine::search(const float*e,int count,float speed,float offset){
  using Hit=Ranked;std::map<uint64_t,Hit> best;
  for(auto&st:streams){if(st.first!=key)continue;auto&fs=st.second;int n=fs.size();std::set<int64_t> starts;for(int j=0;j<n;j++)for(auto id:fs[j].neighbors)if(id>=j&&id-j+n<=int64_t(ntotal))starts.insert(id-j);
  for(auto start:starts){uint64_t tr=std::upper_bound(bounds,bounds+nrefs+1,start)-bounds-1;if(tr>=nrefs||start+n>bounds[tr+1])continue;float score=0;for(int j=0;j<n;j++)score+=similarity(fs[j].vector.data(),start+j);score/=n;auto it=best.find(tr);if(it==best.end()||score>it->second.score)best[tr]={score,tr,(uint64_t)start,st.first/10000.f};}}
- auto&updated=ranked[key];updated.clear();for(auto&h:best)updated.push_back(h.second);best.clear();size_t maxFrames=0;for(auto&s:streams)maxFrames=std::max(maxFrames,s.second.size());for(auto&stream:ranked){if(streams[stream.first].size()*5<maxFrames*4||latestOffset-lastOffset[stream.first]>3.f)continue;for(auto&h:stream.second){auto it=best.find(h.track);if(it==best.end()||h.score>it->second.score)best[h.track]=h;}}std::vector<Hit> hits;for(auto&h:best)hits.push_back(h.second);std::sort(hits.begin(),hits.end(),[](const Hit&a,const Hit&b){return a.score!=b.score?a.score>b.score:a.track<b.track;});
+ auto&updated=ranked[key];updated.clear();for(auto&h:best)updated.push_back(h.second);best.clear();size_t maxFrames=0;for(auto&s:streams)maxFrames=std::max(maxFrames,s.second.size());for(auto&stream:ranked){if(streams[stream.first].size()*5<maxFrames*4||latestOffset-lastOffset[stream.first]>3.f)continue;for(auto&h:stream.second){auto it=best.find(h.track);if(it==best.end()||h.score>it->second.score)best[h.track]=h;}}return render(best,frames.size(),began,std::chrono::duration<double,std::milli>(lookupEnd-lookupBegin).count(),cpuBegin);
+}
+std::string Engine::render(const std::map<uint64_t,Ranked>&best,size_t frameCount,std::chrono::steady_clock::time_point began,double lookupMs,timespec cpuBegin){
+ using Hit=Ranked;std::vector<Hit> hits;for(auto&h:best)hits.push_back(h.second);std::sort(hits.begin(),hits.end(),[](const Hit&a,const Hit&b){return a.score!=b.score?a.score>b.score:a.track<b.track;});
  // Group only direct, sustained reference fingerprint matches to the strongest
  // anchor. Candidate ranking scores and database identities remain untouched.
  auto groupingBegin=std::chrono::steady_clock::now();
@@ -120,7 +123,30 @@ std::string Engine::search(const float*e,int count,float speed,float offset){
   out<<"],\"groupingEvidence\":{\"method\":"<<quote(formatVersion==2?"catalog_duplicate_group_v2":"reference_pq_cosine_v1")<<",\"pairs\":[";
   for(size_t j=0;j<g.evidence.size();j++){if(j)out<<',';const auto&v=g.evidence[j];out<<"{\"anchorId\":"<<quote(text(m[0]))<<",\"sourceId\":"<<quote(text(metadataRow(g.members[j+1].track)[0]))<<",\"meanCosine\":"<<v.mean<<",\"p10Cosine\":"<<v.p10<<",\"overlapSeconds\":"<<v.overlapSeconds<<",\"samples\":"<<v.samples<<'}';}out<<"]}}";
  }
- out<<"],\"rawCandidates\":[";for(size_t i=0;i<std::min<size_t>(20,hits.size());i++){if(i)out<<',';auto&h=hits[i];out<<"{\"id\":"<<quote(text(metadataRow(h.track)[0]))<<",\"score\":"<<h.score<<",\"speed\":"<<h.speed<<",\"referenceSeconds\":"<<(h.start-bounds[h.track])*.5<<'}';}timespec cpuEnd{};clock_gettime(CLOCK_THREAD_CPUTIME_ID,&cpuEnd);out<<"],\"groupingMs\":"<<std::chrono::duration<double,std::milli>(groupingEnd-groupingBegin).count()<<",\"lookupMs\":"<<std::chrono::duration<double,std::milli>(lookupEnd-lookupBegin).count()<<",\"cpuMs\":"<<((cpuEnd.tv_sec-cpuBegin.tv_sec)*1000.+(cpuEnd.tv_nsec-cpuBegin.tv_nsec)/1e6)<<",\"elapsedMs\":"<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-began).count()<<",\"frames\":"<<frames.size()<<'}';return out.str();
+ out<<"],\"rawCandidates\":[";for(size_t i=0;i<std::min<size_t>(20,hits.size());i++){if(i)out<<',';auto&h=hits[i];out<<"{\"id\":"<<quote(text(metadataRow(h.track)[0]))<<",\"score\":"<<h.score<<",\"speed\":"<<h.speed<<",\"referenceSeconds\":"<<(h.start-bounds[h.track])*.5<<'}';}timespec cpuEnd{};clock_gettime(CLOCK_THREAD_CPUTIME_ID,&cpuEnd);out<<"],\"groupingMs\":"<<std::chrono::duration<double,std::milli>(groupingEnd-groupingBegin).count()<<",\"lookupMs\":"<<lookupMs<<",\"cpuMs\":"<<((cpuEnd.tv_sec-cpuBegin.tv_sec)*1000.+(cpuEnd.tv_nsec-cpuBegin.tv_nsec)/1e6)<<",\"elapsedMs\":"<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-began).count()<<",\"frames\":"<<frameCount<<'}';return out.str();
+}
+std::string Engine::recentResult(int count) {
+ if(count<1||count>60)throw std::runtime_error("Invalid recent window count");
+ timespec cpuBegin{};clock_gettime(CLOCK_THREAD_CPUTIME_ID,&cpuBegin);auto began=std::chrono::steady_clock::now();
+ auto stream=streams.find(10000);std::map<uint64_t,Ranked> best;
+ if(stream==streams.end()||stream->second.size()<size_t(count))return render(best,0,began,0,cpuBegin);
+ const auto&frames=stream->second;const size_t first=frames.size()-count;std::set<int64_t> starts;
+ for(int j=0;j<count;j++)for(auto id:frames[first+j].neighbors)if(id>=j&&id-j+count<=int64_t(ntotal))starts.insert(id-j);
+ for(auto start:starts){
+  uint64_t track=std::upper_bound(bounds,bounds+nrefs+1,start)-bounds-1;
+  if(track>=nrefs||start+count>bounds[track+1])continue;
+  float sum=0;for(int j=0;j<count;j++)sum+=similarity(frames[first+j].vector.data(),start+j);
+  float score=sum/count;auto found=best.find(track);
+  if(found==best.end()||score>found->second.score)best[track]={score,track,uint64_t(start),1.f};
+ }
+ return render(best,count,began,0,cpuBegin);
+}
+void Engine::retainRecent(int count) {
+ if(count<1||count>60)throw std::runtime_error("Invalid recent window count");
+ auto stream=streams.find(10000);
+ if(stream==streams.end()||stream->second.size()<size_t(count))throw std::runtime_error("Insufficient normal context");
+ auto&frames=stream->second;frames.erase(frames.begin(),frames.end()-count);
+ ranked.erase(10000);totals[10000]=frames.size();
 }
 double Engine::recent(int count)const {
  if(count<1||count>60)throw std::runtime_error("Invalid recent window count");

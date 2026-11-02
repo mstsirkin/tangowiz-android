@@ -30,6 +30,7 @@ class AdaptiveRecognizer(private val bundle:BundleSnapshot, private val interval
  private val pending=AtomicReference<Trial?>(null)
  private var selected=1.0;private var next=0.0;private var result:JSONObject?=null
  private var rotation=0;private var nextSearch=-30.0;private var generation=Long.MIN_VALUE
+ private val normalRecovery=RecentNormalRecovery()
  private fun top(r:JSONObject?)=r?.optJSONArray("candidates")?.optJSONObject(0)
  private fun score(r:JSONObject?)=top(r)?.optDouble("score")?:0.0
  private fun batches():List<Double> {
@@ -40,7 +41,7 @@ class AdaptiveRecognizer(private val bundle:BundleSnapshot, private val interval
   val batch=if(rotation%2==0)near else outer[(rotation/2)%outer.size];rotation++;return batch
  }
  fun update(audio:FloatArray,size:Int,base:Long,samples:Long,t:Double,normal:JSONObject?,normalHandle:Long,gen:Long,earliest:Long,audible:Boolean):JSONObject? {
-  if(gen!=generation){generation=gen;NativeEngine.reset(live.handle);result=null;next=t;pending.set(null)}
+  if(gen!=generation){generation=gen;NativeEngine.reset(live.handle);result=null;next=t;pending.set(null);normalRecovery.clear()}
   val promotion=pending.getAndSet(null)
   if(promotion!=null){
    val valid=promotion.generation==gen&&System.nanoTime()-promotion.began<15_000_000_000L&&score(promotion.result)>=.65&&score(promotion.result)>=promotion.recent+.08&&score(promotion.result)>maxOf(score(normal),score(result))+.08
@@ -58,7 +59,17 @@ class AdaptiveRecognizer(private val bundle:BundleSnapshot, private val interval
     next+=.5*selected
    }
   }
-  val best=if(score(result)>score(normal))result else normal
+  var best=if(score(result)>score(normal))result else normal
+  if(normalRecovery.shouldCheck(t,score(best),normal?.optInt("frames")?:0,audible)){
+   val recent=JSONObject(NativeEngine.recentResult(normalHandle,RecentNormalRecovery.RECENT_FRAMES))
+   val candidate=top(recent)
+   if(normalRecovery.observe(t,candidate?.optString("id")?:"",score(recent),score(best),candidate?.optDouble("referenceSeconds")?:Double.NaN,recent.optInt("frames"),candidate?.optDouble("speed")?:Double.NaN)){
+    NativeEngine.retainRecent(normalHandle,RecentNormalRecovery.RECENT_FRAMES)
+    selected=1.0;result=null;next=t;rotation=0;pending.set(null);NativeEngine.reset(live.handle)
+    best=recent.put("normalRecovery",true)
+    log(JSONObject().put("event","normal_recovery").put("audio_seconds",samples/8000.0).put("query_offset",t).put("result",recent))
+   }
+  }
   val clock=samples/8000.0
   if(audible&&t+.5>10&&clock>=nextSearch&&score(best)<.60&&samples-48000>=earliest&&size>=48000){
    val started=busy.compareAndSet(false,true)

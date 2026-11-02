@@ -63,3 +63,15 @@ extern "C" JNIEXPORT jfloatArray JNICALL Java_org_tangowiz_app_NativeEngine_feat
 extern "C" JNIEXPORT jfloatArray JNICALL Java_org_tangowiz_app_NativeEngine_resample(JNIEnv*e,jobject,jfloatArray pcm,jdouble start,jdouble speed){try{int n=e->GetArrayLength(pcm);if(n<8000||n>4800000||!std::isfinite(start)||!std::isfinite(speed)||speed<.5||speed>2||start<0||start+7999*speed>=n)throw std::runtime_error("Invalid resampling window");std::vector<float> in(n);float out[8000];e->GetFloatArrayRegion(pcm,0,n,in.data());tangowiz::resampleWindow(in.data(),in.size(),start,speed,out);auto a=e->NewFloatArray(8000);e->SetFloatArrayRegion(a,0,8000,out);return a;}catch(const std::exception&x){fail(e,x.what());return nullptr;}}
 
 extern "C" JNIEXPORT jdouble JNICALL Java_org_tangowiz_app_NativeEngine_recent(JNIEnv*e,jobject,jlong handle,jint count){try{if(!handle)throw std::runtime_error("Invalid engine handle");return ((Handle*)handle)->engine->recent(count);}catch(const std::exception&x){fail(e,x.what());return 0;}}
+
+extern "C" JNIEXPORT jstring JNICALL Java_org_tangowiz_app_NativeEngine_recentResult(JNIEnv*e,jobject,jlong handle,jint count){try{
+ if(!handle)throw std::runtime_error("Invalid engine handle");
+ std::string result=((Handle*)handle)->engine->recentResult(count);
+ auto bytes=e->NewByteArray(result.size());e->SetByteArrayRegion(bytes,0,result.size(),reinterpret_cast<const jbyte*>(result.data()));
+ auto cls=e->FindClass("java/lang/String");auto ctor=e->GetMethodID(cls,"<init>","([BLjava/lang/String;)V");auto encoding=e->NewStringUTF("UTF-8");
+ auto text=(jstring)e->NewObject(cls,ctor,bytes,encoding);e->DeleteLocalRef(bytes);e->DeleteLocalRef(encoding);return text;
+}catch(const std::exception&x){fail(e,x.what());return nullptr;}}
+
+extern "C" JNIEXPORT void JNICALL Java_org_tangowiz_app_NativeEngine_retainRecent(JNIEnv*e,jobject,jlong handle,jint count){try{
+ if(!handle)throw std::runtime_error("Invalid engine handle");((Handle*)handle)->engine->retainRecent(count);
+}catch(const std::exception&x){fail(e,x.what());}}
