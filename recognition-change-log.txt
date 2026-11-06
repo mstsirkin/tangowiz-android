@@ -1,3 +1,13 @@
+2026-11-06 — Wait for 7 fingerprints before naming a recording
+
+Owner requested this as a setting, on by default, that can be turned off in More options ("Wait for 7 fingerprints (about 4 s)"). While the shown match has fewer than 7 fingerprints, live results and history stay empty. That is about 4 s of audio after listening starts, a manual reset or a song-end reset. Recognition, speed searches, song-end detection, recovery and saved audio and fingerprints are unchanged; only what is shown waits.
+
+Evidence, from a host replay of the phone logic on the original model and index: wrong recordings at 79% or more appeared almost only with 1-4 fingerprints in the match (events 51 of 656 windows, phone sessions 115 of 260), a few with 5-6 on event clips, and none naming another orchestra from 7 on. The count of 7 was chosen from those same results, so the owner's next recorded milonga is the fresh check.
+
+New JVM regression EarlyAnswerGateTest first failed to compile without the gate, then passed unchanged. Full JVM suite: 56 tests, zero failures. The native recognition release gate passed. Released at the owner's request before the emulator replay finished; its receipt will be added as validation/early-answer-gate-0.5.17.json.
+
+Reversion: turn the setting off, or revert this change.
+
 2026-10-31 — Adaptive wide range is the application default
 
 User authorized committing wide-range recognition as the default. Adaptive searches -6% through +5% in half-percent steps (23 points). Normal speed always runs, and the accepted alternate continues live. Consecutive outer batches are retained; near-normal searches occur every other turn. Search budgets are five alternatives with normal alone and four with a selected alternate. Two background workers retain independent model/native state. Existing strong-match and song-end guards are preserved.

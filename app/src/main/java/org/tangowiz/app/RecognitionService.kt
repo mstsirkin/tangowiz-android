@@ -259,7 +259,8 @@ class RecognitionService:Service(){
     }
     val djData=DjPopularity.table(bundle);val djRequested=store.dj
     val boosted=DjPopularity.rank(presentationPool.filter{ConfidenceVisibility.visible(ConfidenceCalibration.percent(bundle,it.score))},djData,djRequested)
-    val presented=OrchestraPresentation.merge(boosted).map{it.copy(confidence=ConfidenceCalibration.percent(bundle,it.rankingScore))}.filter{ConfidenceVisibility.visible(it.confidence)};val best=presented.firstOrNull();val second=presented.getOrNull(1)
+    val settled=EarlyAnswerGate.visible(selectedResult?.optInt("frames")?:0,store.earlyAnswerGate)
+    val presented=if(!settled)emptyList() else OrchestraPresentation.merge(boosted).map{it.copy(confidence=ConfidenceCalibration.percent(bundle,it.rankingScore))}.filter{ConfidenceVisibility.visible(it.confidence)};val best=presented.firstOrNull();val second=presented.getOrNull(1)
     selectedResult=selectedResult?.let{JSONObject(it.toString()).put("dj",JSONObject().put("requested",djRequested).put("available",djData!=null).put("dataVersion",djData?.version?:""))}
     if(best!=null&&(lastLogged==null||!best.sameRecording(lastLogged!!)||best.djRequested!=lastLogged!!.djRequested||best.djAvailable!=lastLogged!!.djAvailable||best.djVersion!=lastLogged!!.djVersion||offset-logSecond>=5)){val logged=best;val raw=selectedResult;io.execute{store.result(logged,second,offset+1,session,raw)};lastLogged=best;logSecond=offset}
     synchronized(stateLock){if(active(token))LiveState.publish(RecognitionState(listening=true,resident=true,phase="♪",best=best,second=second,seconds=offset+1))}

@@ -10,6 +10,7 @@ object ConfidenceUiValidation {
   val ctx=i.targetContext;val store=Store(ctx);val before=LiveState.current
   check(store.adaptiveRecognition){"Fresh install must default to Adaptive"}
   check(store.adaptiveInterval==2.0){"Default retry interval must be 2 seconds"}
+  check(store.earlyAnswerGate){"Fresh install must wait for 7 fingerprints"}
   ResourceStore(ctx).automaticChecks=false
   val activity=i.startActivitySync(Intent(ctx,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
   try {

@@ -24,6 +24,7 @@ class FileReplayInstrumentation:Instrumentation(){
   val ctx=targetContext;val store=Store(ctx);val report=JSONObject()
   val oldMode=store.adaptiveRecognition;val oldInterval=store.adaptiveInterval;args.getString("mode")?.let{store.adaptiveRecognition=it!="baseline"};if(store.adaptiveRecognition)store.adaptiveInterval=args.getString("interval","2").toDouble()
   val oldMic=store.microphone;val oldAudio=store.audio;val oldTiming=store.timing
+  val oldGate=store.earlyAnswerGate;args.getString("early_gate")?.let{store.earlyAnswerGate=it=="on"}
   var activity:android.app.Activity?=null
   val samples=JSONArray();var failure:Throwable?=null
   fun await(label:String,timeout:Long,condition:()->Boolean){val end=SystemClock.elapsedRealtime()+timeout;while(!condition()){check(SystemClock.elapsedRealtime()<end){"Timeout: $label"};Thread.sleep(100)}}
@@ -66,7 +67,7 @@ class FileReplayInstrumentation:Instrumentation(){
    while(LiveState.current.seconds<frames*.5-.6&&SystemClock.elapsedRealtime()<end){check(LiveState.current.error.isBlank());Thread.sleep(100)}
    val final=LiveState.current
    check(final.seconds>=frames*.5-.6){"Audio did not drain within timeout"}
-   report.put("status","passed").put("input_audio_seconds",frames*.5).put("processed_audio_seconds",final.seconds).put("feed_wall_seconds",feedWallSeconds).put("post_feed_drain_seconds",(SystemClock.elapsedRealtime()-feedFinished)/1000.0).put("fully_drained",final.seconds>=frames*.5-.6).put("maximum_feed_lateness_ms",maxLate).put("maximum_input_queue_blocks",maxQueue).put("queue_overflow",false).put("replay_samples",samples).put("bundle_version",bundle.version).put("actual_production_service",true).put("adaptive_enabled",store.adaptiveRecognition).put("interval_seconds",if(store.adaptiveRecognition)store.adaptiveInterval else 30.0).put("actual_production_fallback",!store.adaptiveRecognition).put("synthetic_watch_input",true).put("physical_microphone_or_wear_transport",false).put("hardware_performance_claim","physical phone controlled replay")
+   report.put("status","passed").put("input_audio_seconds",frames*.5).put("processed_audio_seconds",final.seconds).put("feed_wall_seconds",feedWallSeconds).put("post_feed_drain_seconds",(SystemClock.elapsedRealtime()-feedFinished)/1000.0).put("fully_drained",final.seconds>=frames*.5-.6).put("maximum_feed_lateness_ms",maxLate).put("maximum_input_queue_blocks",maxQueue).put("queue_overflow",false).put("replay_samples",samples).put("bundle_version",bundle.version).put("actual_production_service",true).put("adaptive_enabled",store.adaptiveRecognition).put("early_answer_gate",store.earlyAnswerGate).put("interval_seconds",if(store.adaptiveRecognition)store.adaptiveInterval else 30.0).put("actual_production_fallback",!store.adaptiveRecognition).put("synthetic_watch_input",true).put("physical_microphone_or_wear_transport",false).put("hardware_performance_claim","physical phone controlled replay")
    if(final.best!=null)report.put("final_title",final.best!!.title).put("final_orchestra",final.best!!.orchestra).put("final_score",final.best!!.score).put("final_speed",final.best!!.speed)
    ctx.startService(Intent(ctx,RecognitionService::class.java).setAction(RecognitionService.PAUSE))
    await("pause",45000){!LiveState.current.listening}
@@ -77,7 +78,7 @@ class FileReplayInstrumentation:Instrumentation(){
   }catch(t:Throwable){failure=t;report.put("status","failed").put("error",t.stackTraceToString()).put("replay_samples",samples)}
   finally{
    runCatching{ctx.startService(Intent(ctx,RecognitionService::class.java).setAction(RecognitionService.EXIT));await("engine exit",45000){LiveState.current.exited}}
-   store.adaptiveRecognition=oldMode;store.adaptiveInterval=oldInterval;store.microphone=oldMic;store.audio=oldAudio;store.timing=oldTiming
+   store.adaptiveRecognition=oldMode;store.adaptiveInterval=oldInterval;store.microphone=oldMic;store.audio=oldAudio;store.timing=oldTiming;store.earlyAnswerGate=oldGate
    runCatching{activity?.let{runOnMainSync{it.finish()}}}
    File(ctx.filesDir,"file-replay-report.json").writeText(report.toString(2))
    finish(if(failure==null)0 else 1,Bundle().apply{putString("full_report",report.toString());putString("summary",JSONObject().put("status",report.optString("status")).put("input_audio_seconds",report.optDouble("input_audio_seconds")).toString())})

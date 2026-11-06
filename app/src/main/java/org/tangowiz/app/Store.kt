@@ -27,6 +27,7 @@ class Store(val context:Context) {
  var microphone:String get()=prefs.getString("microphone","phone")?:"phone";set(v){require(v in setOf("phone","watch"));prefs.edit().putString("microphone",v).commit()}
  var watchUpdateInterval:Long get()=prefs.getLong("watch_update_interval",5000L).coerceIn(2000L,60000L);set(v){prefs.edit().putLong("watch_update_interval",v.coerceIn(2000L,60000L)).commit()}
  var dj:Boolean get()=prefs.getBoolean("dj_popularity",false);set(v){prefs.edit().putBoolean("dj_popularity",v).commit()}
+ var earlyAnswerGate:Boolean get()=prefs.getBoolean("early_answer_gate",true);set(v){prefs.edit().putBoolean("early_answer_gate",v).commit()}
  var audio:Boolean get()=prefs.getBoolean("audio",false); set(v){prefs.edit().putBoolean("audio",v).apply()}
  var timing:Boolean get()=prefs.getBoolean("timing",false); set(v){prefs.edit().putBoolean("timing",v).apply()}
  fun append(file:File,json:JSONObject)=synchronized(SessionFiles.lock){file.appendText(json.toString()+"\n")}
