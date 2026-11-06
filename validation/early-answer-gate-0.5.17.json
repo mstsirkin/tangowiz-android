@@ -1,0 +1,55 @@
+{
+  "release": "0.5.17",
+  "application_id": "org.tangowiz.app",
+  "certificate_sha256": "7b5a096154dc754da64bf5077d07c11c158819987157b39424fde5928078d698",
+  "apk_sha256": "c12961dd7e61a7a101cc7ad3638d20442f14a12407f06e3836035076fb463700",
+  "updated_over": "0.5.16",
+  "ui_gate": "passed (includes fresh default: gate on)",
+  "jvm_tests": 56,
+  "jvm_failures": 0,
+  "regression_failed_before_fix": true,
+  "same_jvm_regression_passed_after_fix": true,
+  "release_gate": "validateRecognitionRelease passed 2026-11-06",
+  "cases": [
+    {
+      "audio": "idilio",
+      "gate": "on",
+      "fully_drained": true,
+      "completed": 2,
+      "accepted": 1,
+      "worker_errors": 0,
+      "first_shown_audio_seconds": 4.5,
+      "early_answers_shown": 0,
+      "later_answers_shown": 43
+    },
+    {
+      "audio": "unmatched",
+      "gate": "off",
+      "fully_drained": true,
+      "completed": 14,
+      "accepted": 0,
+      "worker_errors": 0,
+      "first_shown_audio_seconds": 1.5,
+      "early_answers_shown": 6,
+      "later_answers_shown": 1
+    },
+    {
+      "audio": "unmatched",
+      "gate": "on",
+      "fully_drained": true,
+      "completed": 12,
+      "accepted": 0,
+      "worker_errors": 0,
+      "first_shown_audio_seconds": 4.5,
+      "early_answers_shown": 0,
+      "later_answers_shown": 1
+    }
+  ],
+  "early_definition": "Answers published with processed audio at most 4.0 s, which is fewer than 7 fingerprints after listening starts",
+  "tested_actual_signed_release_apk": true,
+  "emulator": "API 35 x86_64, 4 CPU, 4096MB RAM",
+  "physical_phone_timing": false,
+  "apk_distributed": true,
+  "installed_on_owner_phone": "2026-11-06, over 0.5.14",
+  "excerpts": "idilio: 40 s of a song played 6% slow; unmatched: first 40 s of an owner-verified unmatched milonga session. Private audio stays local."
+}
