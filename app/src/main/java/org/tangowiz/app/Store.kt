@@ -25,6 +25,7 @@ class Store(val context:Context) {
   get()=runCatching{RecognitionSpeeds.parse(prefs.getString("recognition_speed_offsets",null)?:error("Unset"))}.getOrElse{RecognitionSpeeds.defaults}
   set(v){prefs.edit().putString("recognition_speed_offsets",RecognitionSpeeds.validate(v).joinToString(",")).commit()}
  var microphone:String get()=prefs.getString("microphone","phone")?:"phone";set(v){require(v in setOf("phone","watch"));prefs.edit().putString("microphone",v).commit()}
+ var watchImmediatePercent:Int get()=prefs.getInt("watch_immediate_percent",org.tangowiz.link.WatchUpdateSettings.DEFAULT_IMMEDIATE_PERCENT).coerceIn(0,100);set(v){prefs.edit().putInt("watch_immediate_percent",v.coerceIn(0,100)).commit()}
  var watchUpdateInterval:Long get()=prefs.getLong("watch_update_interval",5000L).coerceIn(2000L,60000L);set(v){prefs.edit().putLong("watch_update_interval",v.coerceIn(2000L,60000L)).commit()}
  var dj:Boolean get()=prefs.getBoolean("dj_popularity",false);set(v){prefs.edit().putBoolean("dj_popularity",v).commit()}
  var earlyAnswerGate:Boolean get()=prefs.getBoolean("early_answer_gate",true);set(v){prefs.edit().putBoolean("early_answer_gate",v).commit()}

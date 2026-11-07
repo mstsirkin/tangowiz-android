@@ -17,6 +17,7 @@ class FileReplayInstrumentation:Instrumentation(){
  private lateinit var args:Bundle
  override fun onCreate(arguments:Bundle?){super.onCreate(arguments);args=arguments?:Bundle();start()}
  override fun onStart(){
+  if(args.getString("watch_updates")=="true"){WatchUpdateControlValidation.run(this);return}
   if(args.getString("ui_gate")=="true"){
    try{ConfidenceUiValidation.run(this);finish(0,Bundle().apply{putString("ui_gate","passed")})}catch(t:Throwable){finish(1,Bundle().apply{putString("ui_gate","failed");putString("error",t.stackTraceToString())})}
    return

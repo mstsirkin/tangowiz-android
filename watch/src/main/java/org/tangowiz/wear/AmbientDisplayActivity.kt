@@ -34,7 +34,7 @@ class AmbientDisplayActivity:ComponentActivity(){
  private fun matchKey()=WatchCache.state.optJSONObject("best")?.let{listOf("id","orchestra","title","singer","year").joinToString("|"){field->it.optString(field)}}?:""
  private var started=false
  private val handler=Handler(Looper.getMainLooper())
- private val changed:()->Unit={runOnUiThread{if(started){if(!DisplaySession.enabled(this))finish() else if(!ambient||((WatchCache.state.optJSONObject("best")?.optInt("percent")?:0)>=70&&(matchKey()!=renderedMatch||!renderedConfident)))render()}}}
+ private val changed:()->Unit={runOnUiThread{if(started){if(!DisplaySession.enabled(this))finish() else if(!ambient||(WatchCache.immediateResult()&&(matchKey()!=renderedMatch||!renderedConfident)))render()}}}
  private val minute=object:Runnable{override fun run(){if(started&&!ambient){render();scheduleMinute()}}}
  private val callbacks=object:AmbientLifecycleObserver.AmbientLifecycleCallback{
   override fun onEnterAmbient(ambientDetails:AmbientLifecycleObserver.AmbientDetails){ambient=true;lowBit=ambientDetails.deviceHasLowBitAmbient;burnIn=ambientDetails.burnInProtectionRequired;handler.removeCallbacks(minute);render()}
@@ -51,14 +51,14 @@ class AmbientDisplayActivity:ComponentActivity(){
   window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
   content=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(22),dp(18),dp(22),dp(16));setBackgroundColor(Color.BLACK)}
   clock=label(12f).apply{contentDescription="Time"};content.addView(clock,LinearLayout.LayoutParams(-1,dp(18)))
-  orchestra=OrchestraNameView(this).apply{setTextColor(Color.WHITE);setOnClickListener{if(!ambient)WatchLink.reset()};contentDescription="Orchestra; tap to reset recognition, keeping two seconds";maxLines=2;setTypeface(null,Typeface.BOLD);setAutoSizeTextTypeUniformWithConfiguration(18,40,1,TypedValue.COMPLEX_UNIT_SP)};content.addView(orchestra,LinearLayout.LayoutParams(-1,0,2f))
+  orchestra=OrchestraNameView(this).apply{setTextColor(Color.WHITE);ResultTouchControls.bind(this);contentDescription="Orchestra; tap to update, hold to reset recognition, keeping two seconds";maxLines=2;setTypeface(null,Typeface.BOLD);setAutoSizeTextTypeUniformWithConfiguration(18,40,1,TypedValue.COMPLEX_UNIT_SP)};content.addView(orchestra,LinearLayout.LayoutParams(-1,0,2f))
   singer=SingerNameView(this).apply{setTextColor(Color.LTGRAY);visibility=View.GONE};content.addView(singer,LinearLayout.LayoutParams(-1,dp(36)))
   song=label(18f).apply{maxLines=2;setAutoSizeTextTypeUniformWithConfiguration(12,20,1,TypedValue.COMPLEX_UNIT_SP)};content.addView(song,LinearLayout.LayoutParams(-1,0,1f))
   status=label(10f).apply{maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END};content.addView(status,LinearLayout.LayoutParams(-1,dp(16)))
   footer=LinearLayout(this).apply{gravity=Gravity.CENTER}
   percent=label(14f);footer.addView(percent,LinearLayout.LayoutParams(0,-1,1f))
   footer.addView(Button(this).apply{text="⚙";textSize=22f;contentDescription="Recognition controls";setTextColor(Color.LTGRAY);setBackgroundColor(Color.TRANSPARENT);setOnClickListener{startActivity(Intent(this@AmbientDisplayActivity,WatchActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))}},LinearLayout.LayoutParams(dp(44),dp(40)))
-  content.addView(footer,LinearLayout.LayoutParams(-1,dp(40)));setContentView(content)
+  content.addView(footer,LinearLayout.LayoutParams(-1,dp(40)));listOf(content,clock,song,status,percent).forEach{ResultTouchControls.bind(it)};setContentView(content)
   onBackPressedDispatcher.addCallback(this,object:OnBackPressedCallback(true){override fun handleOnBackPressed(){DisplaySession.close(this@AmbientDisplayActivity);finish()}})
   lifecycle.addObserver(observer)
  }
@@ -75,7 +75,7 @@ class AmbientDisplayActivity:ComponentActivity(){
  private fun render(){
   if(!::content.isInitialized)return
   renderedMatch=matchKey()
-  renderedConfident=(WatchCache.state.optJSONObject("best")?.optInt("percent")?:0)>=70
+  renderedConfident=WatchCache.immediateResult()
   clock.text=LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
   val stale=WatchCache.stale();val name=uncertain(WatchCache.orchestra())
   orchestra.showName(if(stale&&name!="—"&&!name.startsWith("?"))"? $name" else name,WatchCache.keyword(),WatchCache.fullOrchestra())

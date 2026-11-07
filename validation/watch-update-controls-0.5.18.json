@@ -1,0 +1,48 @@
+{
+  "release": "0.5.18",
+  "phone_apk_sha256": "b55fb3b18015f462ad4993e96e30f632211882924fb8e8ca39efb5c9f17746a3",
+  "watch_apk_sha256": "6695b07e97eddaa488cda7e6bdfa38580187b13859ef7c59ecf42205f055f388",
+  "certificate_sha256": "7b5a096154dc754da64bf5077d07c11c158819987157b39424fde5928078d698",
+  "signed_release_apks_tested": true,
+  "phone_emulator": "API 35 x86_64, 2 CPU",
+  "watch_emulator": "Wear API 34 x86_64, 2 CPU",
+  "phone_settings": {
+    "production_command_handler": true,
+    "paired_transport": false,
+    "persistence_and_state_roundtrip": true,
+    "duplicate_and_stale_commands": true,
+    "invalid_command_atomicity": true,
+    "any_result_threshold": true,
+    "status": "passed"
+  },
+  "watch_settings_and_gestures": {
+    "synthetic_watch_state": true,
+    "interval_and_confidence_selectors": true,
+    "real_tap_updates_and_hold_resets_without_extra_click": true,
+    "ambient_render_uses_selected_threshold": true,
+    "status": "passed"
+  },
+  "adaptive_recognition": {
+    "fully_drained": true,
+    "completed_batches": 2,
+    "accepted_batches": 1,
+    "worker_errors": 0,
+    "gate_enabled": true
+  },
+  "native_recognition_release_gate": "passed, including saved physical-phone Solo Tango fixtures",
+  "physical_device_tested": false,
+  "paired_transport_tested": false,
+  "physical_phone_timing_claim": false,
+  "release_jvm": {
+    "tests": 56,
+    "failures": 0
+  },
+  "shared_jvm": {
+    "tests": 25,
+    "failures": 0
+  },
+  "native_windows": 5823,
+  "saved_phone_field_cases": 9,
+  "watch_updated_over": "0.5.16",
+  "phone_updated_over": "0.5.17"
+}

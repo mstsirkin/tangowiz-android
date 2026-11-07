@@ -11,6 +11,7 @@ import com.google.android.gms.wearable.Wearable
 import org.json.JSONArray
 import org.json.JSONObject
 import org.tangowiz.link.WearMessages
+import org.tangowiz.link.WatchUpdateSettings
 import org.tangowiz.link.WearProtocol
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -45,10 +46,10 @@ object PhoneWatch {
  }
  @Synchronized fun state():JSONObject {
   val store=Store(context);val live=LiveState.current;val bundle=ResourceStore(context).current();val calibration=ConfidenceCalibration.parameters(bundle)
-  val signature="${pendingListening?:live.listening}|${store.microphone}|${store.audio}|${store.timing}|${store.watchUpdateInterval}|${store.dj}"
+  val signature="${pendingListening?:live.listening}|${store.microphone}|${store.audio}|${store.timing}|${store.watchUpdateInterval}|${store.watchImmediatePercent}|${store.dj}"
   if(prefs().getString("control_signature","")!=signature)prefs().edit().putString("control_signature",signature).putLong("revision",revision()+1).commit()
   return JSONObject().put("protocol",WearProtocol.VERSION).put("supportedProtocols",JSONArray(listOf(WearProtocol.VERSION))).put("capabilities",JSONArray(listOf(WearProtocol.ORCHESTRA_KEYWORD,WearProtocol.DJ_BOOST))).put("revision",revision()).put("listening",pendingListening?:live.listening)
-   .put("microphone",store.microphone).put("audio",store.audio).put("timing",store.timing).put("updateIntervalMs",store.watchUpdateInterval)
+   .put("microphone",store.microphone).put("audio",store.audio).put("timing",store.timing).put("updateIntervalMs",store.watchUpdateInterval).put("immediateUpdatePercent",store.watchImmediatePercent)
    .put("djEnabled",store.dj&&djAvailable()).put("djAvailable",djAvailable())
    .put("phase",if(pendingListening==true&&!live.listening)"Starting phone…" else if(live.listening&&store.microphone=="watch"&&!WatchAudioInput.connected)"Waiting for watch audio" else live.phase)
    .put("ready",engineReady&&live.listening).put("error",live.error).put("best",candidate(live.best,bundle,calibration)).put("second",candidate(live.second,bundle,calibration)).put("updatedAt",System.currentTimeMillis())
@@ -61,7 +62,7 @@ object PhoneWatch {
   if(pendingListening==live.listening||live.exited)pendingListening=null
   val key="${live.listening}|${live.error}|${live.resident}|$engineReady"
   val displayPercent=live.best?.let{ConfidenceCalibration.percent(ResourceStore(context).current(),it.rankingScore)}?:0
-  val confident=live.listening&&live.error.isEmpty()&&displayPercent>=70
+  val confident=live.listening&&live.error.isEmpty()&&WatchUpdateSettings.immediate(live.best!=null,displayPercent,Store(context).watchImmediatePercent)
   val decision=pushPolicy.observe(SystemClock.elapsedRealtime(),Store(context).watchUpdateInterval,key,confident,force)
   if(decision==WatchPushPolicy.Decision.SKIP)return
   if(decision==WatchPushPolicy.Decision.NEWLY_CONFIDENT)urgentState.set(true)
@@ -108,6 +109,7 @@ object PhoneWatch {
   val store=Store(context);val oldSource=store.microphone
   val source=values.optString("microphone",oldSource);require(source in setOf("phone","watch")){"Unknown microphone"}
   val interval=values.optLong("updateIntervalMs",store.watchUpdateInterval);require(interval in 2000L..60000L){"Update interval must be 2–60 seconds"}
+  val immediatePercent=values.optInt("immediateUpdatePercent",store.watchImmediatePercent);require(immediatePercent in 0..100){"Immediate update confidence must be 0–100%"}
   val listening=if(values.has("listening"))values.getBoolean("listening") else pendingListening?:LiveState.current.listening
   val audio=if(values.has("audio"))values.getBoolean("audio") else store.audio
   val timing=if(values.has("timing"))values.getBoolean("timing") else store.timing
@@ -115,9 +117,9 @@ object PhoneWatch {
   if(values.has("djEnabled")&&dj)check(djAvailable()){"DJ data is unavailable in this library"}
   val djChanged=store.dj!=dj;store.dj=dj
   if(djChanged)store.append(java.io.File(store.root,"settings.jsonl"),JSONObject().put("time",java.time.Instant.now().toString()).put("event","dj_setting_changed").put("djRequested",dj).put("djAvailable",djAvailable()))
-  store.microphone=source;store.watchUpdateInterval=interval;store.audio=audio;store.timing=timing
+  store.microphone=source;store.watchUpdateInterval=interval;store.watchImmediatePercent=immediatePercent;store.audio=audio;store.timing=timing
   pendingListening=listening
-  prefs().edit().putLong("revision",revision()+1).putString("control_signature","$listening|$source|$audio|$timing|$interval|$dj").commit()
+  prefs().edit().putLong("revision",revision()+1).putString("control_signature","$listening|$source|$audio|$timing|$interval|$immediatePercent|$dj").commit()
   if(!listening||source=="phone"){WatchAudioInput.close();captureRequested=false;network.execute{requestCapture(false)}}
   else if(oldSource!=source)captureRequested=false
   pendingListening=listening

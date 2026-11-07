@@ -4,7 +4,7 @@ The phone performs recognition with its existing CPU model and native C++ index 
 
 ## Install
 
-Install `TangoWiz-0.5.0.apk` on the phone, and both `TangoWiz-Watch-0.5.1.apk` and `TangoWiz-Face-0.5.0.apk` on the watch, for example with WearLoad or ADB. The companion and phone share the package ID and signing certificate required by the Wear OS Data Layer; the face has a separate package. Keep the phone's installed model/catalog. The watch needs neither of those large resources.
+Install `TangoWiz-0.5.18.apk` on the phone, and both `TangoWiz-Watch-0.5.18.apk` and `TangoWiz-Face-0.5.0.apk` on the watch, for example with WearLoad or ADB. The companion and phone share the package ID and signing certificate required by the Wear OS Data Layer; the face has a separate package. Keep the phone's installed model/catalog. The watch needs neither of those large resources.
 
 Add the TangoWiz Tile from the watch's Tile chooser. Select TangoWiz face in the normal face picker. Its large LONG_TEXT slot defaults to the TangoWiz orchestra/song provider; if the system requests a provider or permission, select TangoWiz orchestra and song. Companion minimum API 30; face minimum API 33/Wear OS 4. The face uses WFF 1 for broad compatibility.
 
@@ -12,7 +12,7 @@ Add the TangoWiz Tile from the watch's Tile chooser. Select TangoWiz face in the
 
 - The phone's watch icon selects watch audio and starts listening; tap again to return to the phone microphone.
 - The Tile shows the current result, start/pause and microphone controls, plus a history button opening the scrollable history view.
-- Open the companion for recording/debug toggles and the update interval. The phone has the same recording/debug controls and a Watch updates menu.
+- Open the companion for recording/debug toggles, the result update interval, and immediate-update confidence. Tap the orchestra or song to request the latest phone result; press and hold to reset recognition with two seconds of retained audio. The phone has the same recording/debug controls and a Watch updates menu.
 - The first microphone use requests permission on the watch. Capture runs in a foreground service with a visible notification and Stop action, while the normal watch face remains available.
 - If Android blocks opening either app remotely, a tap-to-open notification provides a visible recovery path. Startup is acknowledged separately from recognition readiness; a delivered command does not mean the microphone is running.
 - Saved audio and debugging artifacts remain on the phone and use its existing export/cleanup features. Watch history displays the latest 40 grouped entries from the phone's bounded history view. History percentages retain the original scale; live result percentages follow the phone's doubled display scale and are not calibrated probabilities.
@@ -63,3 +63,9 @@ The table belongs to downloadable resource data alongside the index/model. Neith
 Shorter recognizable names, including Di Sarli, can be emphasized while context becomes smaller. Miguel Caló uses Caló; Roberto Caló stays distinct. A qualified whole name retains the baseline style when there is nothing to shorten. La Juan D’Arienzo appends LJD while keeping the full name. Unknown, ambiguous or nonfitting hints keep original autosizing. Cached names, identities, history, and tap-to-reset remain unchanged; the WFF face is unchanged.
 
 The optional small table is included in the existing single resource ZIP alongside the index, song metadata and model. The existing downloader validates every member before activating the complete bundle; checksum/schema failures preserve the prior bundle. Native index/model bytes and formats remain unchanged. Protocol 1 gains backward-compatible supported-version/capability advertisements; legacy missing fields continue working with plain names. See [KEYWORDS.md](KEYWORDS.md).
+
+## Watch update controls (phone/watch 0.5.18)
+
+The watch settings now offer a result update interval picker (2, 5, 10, 30 or 60 seconds) and an immediate-update confidence picker (Any result, 25%, 50%, 70%, 90% or 100%). Defaults remain 5 seconds and 70%. The phone persists and acknowledges both settings. The selected confidence threshold replaces the fixed 70% boundary for immediate confidence-rise pushes and new-result rendering in the full-screen ambient display. Continued confident phone results still follow the selected interval; system ambient ticks and waking the display also render the current cache.
+
+Tap the orchestra or song in either result screen to request the phone's current state, bypassing the periodic push interval. Press and hold instead to reset recognition, retaining the last two seconds. A long press is consumed and does not also trigger a refresh. Other controls and the singer-credit reveal retain their actions. Both phone and watch companion updates are needed for the new confidence setting. The separate WFF face, recognition model, catalog, matcher and score thresholds are unchanged.
