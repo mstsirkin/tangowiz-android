@@ -45,6 +45,26 @@ std::vector<int64_t> Engine::neighbors(const float*q,std::vector<float>*output){
 float Engine::similarity(const float*q,uint64_t id)const {
  if(id>=ntotal)return -1;uint64_t slot=reverse[id];if(slot>=nblocks*16)return -1;uint64_t block=slot/16,lane=slot%16;auto list=std::upper_bound(offsets,offsets+nlist+1,(int64_t)block)-offsets-1;float sum=0;for(int d=0;d<128;d++)sum+=q[d]*coarse[list*128+d];for(int j=0;j<64;j++){int code=codes[(block*64+j)*16+lane];sum+=q[j*2]*pq[(j*256+code)*2]+q[j*2+1]*pq[(j*256+code)*2+1];}return sum;
 }
+#ifdef TANGO_SCORE_CACHE
+// Frame vectors and catalog bytes are immutable. Cache the exact float result;
+// summation order and candidate generation remain unchanged. Cache ownership
+// follows the frame through eviction, speed expiry, retention and resets.
+float Engine::cachedSimilarity(Frame& frame,uint64_t id) {
+ auto found=frame.scoreCache.find(id);
+ if(found!=frame.scoreCache.end()){
+#ifdef TANGO_SCORE_CACHE_TESTING
+  ++scoreCacheHits;
+#endif
+  return found->second;
+ }
+#ifdef TANGO_SCORE_CACHE_TESTING
+ ++scoreCacheMisses;
+#endif
+ const float value=similarity(frame.vector.data(),id);
+ if(frame.scoreCache.size()<TANGO_SCORE_CACHE_LIMIT)frame.scoreCache.emplace(id,value);
+ return value;
+}
+#endif
 bool Engine::reconstruct(uint64_t id,float*out)const {
  if(id>=ntotal)return false;
  const uint64_t slot=reverse[id];if(slot>=nblocks*16)return false;
@@ -73,7 +93,13 @@ std::string Engine::search(const float*e,int count,float speed,float offset){
  timespec cpuBegin{};clock_gettime(CLOCK_THREAD_CPUTIME_ID,&cpuBegin);auto began=std::chrono::steady_clock::now();if(count<1||count>64||!std::isfinite(speed)||speed<.5||speed>2||!std::isfinite(offset))throw std::runtime_error("Invalid query batch");int key=std::lround(speed*10000);if(lastOffset.count(key)&&std::abs(offset-(lastOffset[key]+.5f*speed))>.1f){streams[key].clear();totals[key]=0;ranked.erase(key);}lastOffset[key]=offset+(count-1)*.5f*speed;latestOffset=std::max(latestOffset,lastOffset[key]);for(auto it=lastOffset.begin();it!=lastOffset.end();){if(latestOffset-it->second>30.f){streams.erase(it->first);ranked.erase(it->first);totals.erase(it->first);it=lastOffset.erase(it);}else ++it;}auto&frames=streams[key];auto lookupBegin=std::chrono::steady_clock::now();for(int i=0;i<count;i++){Frame f;f.vector.assign(e+i*128,e+(i+1)*128);f.neighbors=neighbors(f.vector.data());frames.push_back(std::move(f));totals[key]++;}auto lookupEnd=std::chrono::steady_clock::now();if(frames.size()>60)frames.erase(frames.begin(),frames.end()-60);
  using Hit=Ranked;std::map<uint64_t,Hit> best;
  for(auto&st:streams){if(st.first!=key)continue;auto&fs=st.second;int n=fs.size();std::set<int64_t> starts;for(int j=0;j<n;j++)for(auto id:fs[j].neighbors)if(id>=j&&id-j+n<=int64_t(ntotal))starts.insert(id-j);
- for(auto start:starts){uint64_t tr=std::upper_bound(bounds,bounds+nrefs+1,start)-bounds-1;if(tr>=nrefs||start+n>bounds[tr+1])continue;float score=0;for(int j=0;j<n;j++)score+=similarity(fs[j].vector.data(),start+j);score/=n;auto it=best.find(tr);if(it==best.end()||score>it->second.score)best[tr]={score,tr,(uint64_t)start,st.first/10000.f};}}
+ for(auto start:starts){uint64_t tr=std::upper_bound(bounds,bounds+nrefs+1,start)-bounds-1;if(tr>=nrefs||start+n>bounds[tr+1])continue;float score=0;
+#ifdef TANGO_SCORE_CACHE
+ for(int j=0;j<n;j++)score+=cachedSimilarity(fs[j],start+j);
+#else
+ for(int j=0;j<n;j++)score+=similarity(fs[j].vector.data(),start+j);
+#endif
+score/=n;auto it=best.find(tr);if(it==best.end()||score>it->second.score)best[tr]={score,tr,(uint64_t)start,st.first/10000.f};}}
  auto&updated=ranked[key];updated.clear();for(auto&h:best)updated.push_back(h.second);best.clear();size_t maxFrames=0;for(auto&s:streams)maxFrames=std::max(maxFrames,s.second.size());for(auto&stream:ranked){if(streams[stream.first].size()*5<maxFrames*4||latestOffset-lastOffset[stream.first]>3.f)continue;for(auto&h:stream.second){auto it=best.find(h.track);if(it==best.end()||h.score>it->second.score)best[h.track]=h;}}return render(best,frames.size(),began,std::chrono::duration<double,std::milli>(lookupEnd-lookupBegin).count(),cpuBegin);
 }
 std::string Engine::render(const std::map<uint64_t,Ranked>&best,size_t frameCount,std::chrono::steady_clock::time_point began,double lookupMs,timespec cpuBegin){

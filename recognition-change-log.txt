@@ -21,3 +21,11 @@ The new busy-retry regression first failed with expected next check 2.5 seconds 
 Reversion: revert this commit to restore the prior production implementation. The Legacy menu option provides a runtime fallback without a source rollback.
 
 For controlled replay validation, build the test APK with -PreplayRunner=org.tangowiz.app.FileReplayInstrumentation. Normal test builds retain the existing RecognitionInstrumentation runner. The production application ID and signing configuration are unchanged. No APK release is published by this source commit.
+
+2026-11-08 — Native score-cache safety tests
+
+Added ten native matcher component tests comparing uncached and opt-in cached execution on a deterministic synthetic catalog. Covered exact emitted matching results, cache reuse, different query vectors and speed streams, rolling-window eviction, resets, offset gaps, stale stream expiry, recent-context retention, per-frame memory bounds and catalog isolation. The deliberately disabled-cache control failed on zero reuse; the deliberately unbounded control failed with 485 entries where four were allowed. The correct bounded implementation passed all ten tests.
+
+The cache is behind TANGO_SCORE_CACHE and remains disabled in production builds. The test probe and hit counters are compiled only for native tests. The suite is now run by the existing tracked recognition release gate; test sources are included in its source signature. Synthetic tests complement, and do not replace, independent saved-phone release fixtures and emulator validation before an APK is distributed.
+
+Validation completed: all ten score-cache tests passed; both deliberate negative controls failed as expected. The integrated default-matcher release gate also passed all 5,823 saved-phone regression windows and nine independent Solo Tango field cases. No APK was built or distributed; activating the cache remains a separate change requiring the saved-phone gates against the enabled implementation and actual emulator recognition before release.

@@ -12,7 +12,7 @@ def sha(path):
 def read(path):return json.loads(pathlib.Path(path).read_text())
 def signature(candidate):
  files={}
- for prefix,root in [('app',candidate/'app/src'),('tools',REPO/'tools'),('host',REPO/'tests/host')]:
+ for prefix,root in [('app',candidate/'app/src'),('tools',REPO/'tools'),('tests',REPO/'tests')]:
   for p in sorted(root.rglob('*')):
    if p.is_file() and p.suffix in {'.kt','.java','.cpp','.h','.hpp','.py'}:files[prefix+'/'+str(p.relative_to(root))]=sha(p)
  for p in [candidate/'build.gradle',candidate/'app/build.gradle',candidate/'settings.gradle',candidate/'gradle.properties',candidate/'app/src/main/cpp/CMakeLists.txt']:
@@ -74,6 +74,9 @@ def worker(args,config,save):
  for name,receipt in manifest['files'].items():
   path=base/name;require(path.is_file() and path.stat().st_size==receipt['bytes'] and sha(path)==receipt['sha256'],'Private release fixture missing or changed')
  require(len(manifest['cases'])==6 and sum(bool(c['negative']) for c in manifest['cases'])==2,'Required positive/negative corpus incomplete')
+ status('native_score_cache_unit_tests',0,10)
+ with (out/'score-cache-unit-tests.log').open('w') as log:
+  subprocess.run([sys.executable,str(args.candidate_root/'tests/test_score_cache.py')],cwd=args.candidate_root,check=True,stdout=log,stderr=subprocess.STDOUT)
  snap=out/'source';cpp=snap/'cpp';cpp.mkdir(parents=True,exist_ok=True)
  original_cpp=args.candidate_root/'app/src/main/cpp'
  for p in original_cpp.iterdir():
@@ -149,7 +152,7 @@ def worker(args,config,save):
  solo_tango_field_report=validate_saved_phone_field_fixtures(config,out/'candidate.so')
  save(out/'solo-tango-field-report.json',solo_tango_field_report)
  require(signature(args.candidate_root)==args.source_signature,'Candidate sources changed during release validation')
- report=dict(passed=True,solo_tango_field_cases=len(solo_tango_field_report['cases']),source_signature=args.source_signature,fixture_manifest_sha256=config['fixture_manifest_sha256'],index_bundle=manifest['index_bundle'],windows=done,baseline_strong_windows=strong_count,cases=cases,cpu_affinity=cores,host_wall_seconds=time.monotonic()-began,method='Exact production C++ and Java policy with saved phone embeddings; frozen legacy comparator and pinned index. No microphone audio or model inference. Alternate-speed asynchronous workers and physical-phone timing are outside this native regression. Emulator release checks remain separate.')
+ report=dict(passed=True,score_cache_unit_tests=10,solo_tango_field_cases=len(solo_tango_field_report['cases']),source_signature=args.source_signature,fixture_manifest_sha256=config['fixture_manifest_sha256'],index_bundle=manifest['index_bundle'],windows=done,baseline_strong_windows=strong_count,cases=cases,cpu_affinity=cores,host_wall_seconds=time.monotonic()-began,method='Exact production C++ and Java policy with saved phone embeddings; frozen legacy comparator and pinned index. No microphone audio or model inference. Alternate-speed asynchronous workers and physical-phone timing are outside this native regression. Emulator release checks remain separate.')
  save(out/'report.json',report);status('complete',done,total)
 def main():
  parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--config',type=pathlib.Path,default=pathlib.Path(os.environ.get('TANGOWIZ_RELEASE_FIXTURES',pathlib.Path.home()/'.config/tangowiz/recognition-release-fixtures.json')));parser.add_argument('--output',type=pathlib.Path,default=REPO/'build/reports/recognition-release');parser.add_argument('--candidate-root',type=pathlib.Path,default=REPO);parser.add_argument('--worker',action='store_true');parser.add_argument('--source-signature');args=parser.parse_args();args.candidate_root=args.candidate_root.resolve()

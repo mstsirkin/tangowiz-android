@@ -1,0 +1,39 @@
+{
+  "unit_tests": 10,
+  "unit_tests_passed": true,
+  "negative_controls": [
+    {
+      "step": "red-disabled-cache",
+      "expected_pass": false,
+      "returncode": 1,
+      "expected_outcome_observed": true,
+      "elapsed_seconds": 16.446300506591797
+    },
+    {
+      "step": "green-full-suite",
+      "expected_pass": true,
+      "returncode": 0,
+      "expected_outcome_observed": true,
+      "elapsed_seconds": 21.403904676437378
+    },
+    {
+      "step": "red-unbounded-cache",
+      "expected_pass": false,
+      "returncode": 1,
+      "expected_outcome_observed": true,
+      "elapsed_seconds": 18.259289026260376
+    }
+  ],
+  "release_gate_passed": true,
+  "release_gate_windows": 5823,
+  "solo_tango_field_cases": 9,
+  "release_gate_source_signature": "b977137def5a9d3ffd874e022f27e09829403b87772f6a3c3238bdf30bb7fd69",
+  "cache_enabled_in_production": false,
+  "source_sha256": {
+    "app/src/main/cpp/recognition.cpp": "376ececb07d04de5e198c02e2755e84878ed8803fbd3a00a9a6e3d7ca4075719",
+    "app/src/main/cpp/recognition.h": "c46010b5ba747795021265526162c83944c32c9ccce9704099f5fa8d9744733f",
+    "tests/test_score_cache.py": "ab82eafd07505992b483538463258e94da693cc419293b810b1ee008679d9269",
+    "tests/host/score_cache_bridge.cpp": "4e223427ac46fa534c5abef589086b1db33d809a95f4ed33dc335970f635844b",
+    "tools/recognition_release_gate.py": "59f147589aac826572bc7455e77e1d3e9625a944efd22a1e4db5e2e835f72d3c"
+  }
+}

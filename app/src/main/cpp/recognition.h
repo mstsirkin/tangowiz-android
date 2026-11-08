@@ -4,13 +4,31 @@
 #include <vector>
 #include <map>
 #include <tuple>
+#ifdef TANGO_SCORE_CACHE
+#include <unordered_map>
+#endif
 #include <chrono>
 #include <time.h>
 #include "reference_grouping.h"
 namespace tangowiz {
 struct Slice {uint64_t offset,size;};
-struct Frame {std::vector<float> vector;std::vector<int64_t> neighbors;};
+struct Frame {std::vector<float> vector;std::vector<int64_t> neighbors;
+#ifdef TANGO_SCORE_CACHE
+ std::unordered_map<uint64_t,float> scoreCache;
+#endif
+};
 class Engine {
+#ifdef TANGO_SCORE_CACHE_TESTING
+ friend struct ScoreCacheTestProbe;
+ uint64_t scoreCacheHits=0,scoreCacheMisses=0;
+#endif
+#ifdef TANGO_SCORE_CACHE
+#ifndef TANGO_SCORE_CACHE_LIMIT
+#define TANGO_SCORE_CACHE_LIMIT 4096
+#endif
+ static_assert(TANGO_SCORE_CACHE_LIMIT>0,"Score cache bound must be positive");
+ float cachedSimilarity(Frame& frame,uint64_t id);
+#endif
  const uint8_t* data;uint64_t size;uint64_t nlist,nblocks,ntotal,nrefs;
  const uint8_t* codes;const int64_t* ids;const int64_t* offsets;const float* pq;const float* coarse;const int64_t* bounds;const uint32_t* reverse;const uint32_t* metadata;const char* strings;uint64_t stringsize;
  uint32_t metadataStride=6;

@@ -113,3 +113,18 @@ Watch 0.5.15 enlarges singer names to a preferred 26sp in a 36dp line, between t
 The mandatory release gate also checks the saved physical-phone Solo Tango vals queries. The private release configuration must include `additional_field_fixtures` (manifest path/hash and pinned catalog path/hash). Missing or altered fixtures fail validation. These queries are independent of the album reference fingerprints and cover Vals de verano, Mujeres Vals, and Vals de invierno. Resource-index releases must run `tools/validate_field_fixtures.py` against the candidate catalog and current compiled native bridge, in addition to the existing recognition regression suite.
 
 Phone/watch 0.5.18 make the watch update interval and immediate-update confidence selectable in watch settings. Defaults remain 5 seconds and 70%. Tap the orchestra or song to request the latest phone result; press and hold to reset with two seconds of retained audio. This replaces the earlier orchestra tap-to-reset gesture. Update both APKs; the separate watch face and recognition resources are unchanged. See [watch update controls](WATCH.md#watch-update-controls-phonewatch-0518) for choices and behavior.
+
+### Native score-cache safety tests
+
+Run `python3 tests/test_score_cache.py` with NumPy and a C++17 `g++` compiler. The ten tests compile the original matcher, an opt-in cached variant and a four-entry-per-frame stress variant against the same deterministic synthetic catalog. They require identical candidate IDs, scores, offsets, speeds, grouping and metadata. They also cover cache reuse, distinct query vectors, separate speed streams, rolling-window eviction, resets, offset jumps, stale-stream expiry, recent-window retention and isolation between catalogs.
+
+The suite is included in `:app:validateRecognitionRelease`, alongside the existing saved physical-phone regressions and independent Solo Tango vals fixtures. It does not replace those fixtures or emulator app validation.
+
+Negative controls demonstrate that the tests detect a disabled cache and a removed memory bound; these commands are expected to fail:
+
+```sh
+TANGO_TEST_DISABLE_CACHE=1 python3 tests/test_score_cache.py ScoreCacheTests.test_reuses_prior_frame_scores
+TANGO_TEST_UNBOUNDED_CACHE=1 python3 tests/test_score_cache.py ScoreCacheTests.test_cache_bound_and_overflow_preserve_results
+```
+
+The cache implementation is opt-in (`TANGO_SCORE_CACHE`) and is not enabled in production builds yet. Its maximum is 4096 entries per retained frame; old frames own and release their entries. Activation requires the app release checks, including actual emulator recognition, before APK distribution.
