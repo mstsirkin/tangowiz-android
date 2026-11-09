@@ -13,6 +13,7 @@ import android.widget.*
 /** Resource-only entry screen. A committed, validated bundle is the gate to recognition. */
 class SetupActivity:Activity(){
  companion object {const val UPDATE="update";const val PROGRESS="progress"}
+ private lateinit var versionLine:TextView
  private lateinit var resourceLine:TextView
  private lateinit var resourceButton:Button
  private lateinit var pauseButton:Button
@@ -40,6 +41,9 @@ class SetupActivity:Activity(){
   root.addView(ImageView(this).apply{setImageResource(R.drawable.app_icon);background=box(Color.rgb(245,236,220));setPadding(dp(10),dp(10),dp(10),dp(10));contentDescription="TangoWiz"},LinearLayout.LayoutParams(dp(108),dp(108)).apply{bottomMargin=dp(30)})
   root.addView(TextView(this).apply{text=if(current==null)"Set up music recognition" else "Resource update";textSize=25f;setTextColor(white);gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,-2))
   root.addView(TextView(this).apply{text=if(current==null)"Download once, then recognize music offline." else "Your current music library stays available.";textSize=16f;setTextColor(white);gravity=Gravity.CENTER;setPadding(0,dp(14),0,dp(22))},LinearLayout.LayoutParams(-1,-2))
+  if(savedInstanceState==null&&!ResourceDownloadService.isBusy())ResourceProgress.checkedOnlineVersion=null
+  versionLine=TextView(this).apply{textSize=16f;setTextColor(white);gravity=Gravity.CENTER;setPadding(0,dp(8),0,dp(8))};root.addView(versionLine,LinearLayout.LayoutParams(-1,-2))
+  versionLine.text="Installed catalog: ${current?.version?:"—"}\nLatest online: —"
   resourceLine=TextView(this).apply{textSize=18f;setTextColor(white);gravity=Gravity.CENTER;setPadding(0,dp(12),0,dp(12))};root.addView(resourceLine,LinearLayout.LayoutParams(-1,-2))
   progress=ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply{max=100};root.addView(progress,LinearLayout.LayoutParams(-1,dp(12)).apply{bottomMargin=dp(20)})
   resourceButton=Button(this).apply{textSize=20f;setTextColor(white);background=box(Color.rgb(43,100,80));minHeight=dp(68);setOnClickListener{resourceAction()}};root.addView(resourceButton,LinearLayout.LayoutParams(-1,dp(72)))
@@ -67,6 +71,7 @@ class SetupActivity:Activity(){
  }}
  private fun renderResources(){if(!foreground||leaving||isFinishing||isDestroyed||!::resourceLine.isInitialized)return;val current=ResourceStore(this).current()
   if(current!=null&&(initialDirectory==null||current.directory.absolutePath!=initialDirectory)){openMain();return}
+  versionLine.text="Installed catalog: ${current?.version?:"—"}\nLatest online: ${ResourceProgress.checkedOnlineVersion?:"—"}"
   val s=ResourceProgress.current;val busy=s.kind in setOf("checking","downloading","verifying","pausing","cancelling");resourceButton.isEnabled=!busy
   resourceLine.text=when{ s.kind=="available"&&s.total>0->"Download %.2f GB".format(s.total/1e9);s.kind=="verifying"&&s.total>0->"Verifying ${s.received*100/s.total}%";s.kind in setOf("downloading","paused")&&s.total>0->"%d%% · %.2f / %.2f GB".format(s.received*100/s.total,s.received/1e9,s.total/1e9)+(if(s.kind=="paused")"\nPaused" else if(s.message.startsWith("Reconnecting"))"\n"+s.message else "");s.kind=="ready"&&current==null->"Resources are not ready. Retry.";s.message.isNotEmpty()->s.message;else->"Checking resources…"}
   resourceButton.text=when{s.kind=="update_app"->"Update app ↗";busy->if(s.kind=="checking")"Checking…" else if(s.kind=="verifying")"Verifying…" else if(s.kind in setOf("pausing","cancelling"))"Stopping…" else "Downloading…";s.kind=="ready"&&current!=null->"Done";s.kind=="paused"->"Resume ↓";s.kind=="retry"->"Retry ↻";else->"Download ↓"}

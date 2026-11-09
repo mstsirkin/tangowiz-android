@@ -26,6 +26,7 @@ fun validateCatalogFormat(bundle:BundleSnapshot){val expected="TWIDX00${bundle.f
 data class ResourceState(val kind:String="idle",val message:String="",val received:Long=0,val total:Long=0)
 object ResourceProgress {
  @Volatile var current=ResourceState()
+ @Volatile var checkedOnlineVersion:String?=null
  val listeners=CopyOnWriteArrayList<()->Unit>()
  fun publish(value:ResourceState){current=value;listeners.forEach{it()}}
 }
@@ -102,6 +103,7 @@ class ResourceStore(context:Context,private val transport:ResourceTransport=Http
  fun offered():ResourceManifest?=runCatching{ResourceManifest.parse(JSONObject(offer.readText()))}.getOrNull()?.takeIf{it.archive.sha256!=current()?.archiveHash}
  fun check(download:Boolean):Boolean {
   checkCancelled()
+  ResourceProgress.checkedOnlineVersion=null
   progress(ResourceState("checking","Checking updates…"))
   val m=transport.open(manifestUrl,emptyMap()).use{r->
    if(r.code==404||r.code==410)throw AppUpdateRequired("Resources for this app format are no longer available")
@@ -109,6 +111,7 @@ class ResourceStore(context:Context,private val transport:ResourceTransport=Http
    val text=r.body.readBytesLimited(128*1024).toString(Charsets.UTF_8);ResourceManifest.parse(runCatching{JSONObject(text)}.getOrElse{throw AppUpdateRequired("The resource manifest needs a newer app")})
   }
   checkCancelled()
+  ResourceProgress.checkedOnlineVersion=m.version
   prefs.edit().putLong("last_resource_check",System.currentTimeMillis()).apply()
   if(current()?.archiveHash==m.archive.sha256){progress(ResourceState("ready","Up to date"));return false}
   write(offer,m.json)
