@@ -132,10 +132,9 @@ class RecognitionService:Service(){
   val start=SystemClock.elapsedRealtimeNanos();val timings=File(dir,"timing.jsonl")
   fun timing(stage:String,t0:Long,cpu0:Long=0,extra:JSONObject=JSONObject(),process0:Long=0){if(store.timing){extra.put("stage",stage).put("time",Instant.now().toString()).put("elapsed_ms",(SystemClock.elapsedRealtimeNanos()-t0)/1e6);if(cpu0>0)extra.put("caller_thread_cpu_ms",(android.os.Debug.threadCpuTimeNanos()-cpu0)/1e6);if(process0>0)extra.put("process_cpu_ms",android.os.Process.getElapsedCpuTime()-process0);io.execute{store.append(timings,extra)}}}
   try{
-   val usingWatch=store.microphone=="watch"
+   val usingWatch=store.microphone=="watch";val captureMode=store.phoneCaptureMode
    val ar=if(usingWatch)null else {
-    val size=maxOf(AudioRecord.getMinBufferSize(8000,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT),16000)
-    AudioRecord(MediaRecorder.AudioSource.UNPROCESSED,8000,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT,size).also{check(it.state==AudioRecord.STATE_INITIALIZED){"Microphone initialization failed"}}
+    PhoneCapture.create(captureMode)
    }
    recorder=ar
    val queue=ArrayBlockingQueue<ShortArray>(if(usingWatch)8 else 240)
@@ -151,7 +150,7 @@ class RecognitionService:Service(){
    captureThread=Thread({
     android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO)
     try{
-     var watchStream:String?=null
+     var watchStream:String?=null;var captureLogged=false
      while(active(token)){
       val block:ShortArray
       if(usingWatch){
@@ -165,6 +164,7 @@ class RecognitionService:Service(){
        if(n!=block.size)continue
       }
       if(!active(token))break
+      if(!captureLogged&&ar!=null){captureLogged=true;event("capture_configuration",PhoneCapture.describe(ar).put("requested_mode",captureMode))}
       recent.append(block);queue.put(block);captured.addAndGet(block.size.toLong())
      }
     }catch(e:Exception){if(active(token)){synchronized(stateLock){if(active(token)){desired=false;generation++}};LiveState.publish(RecognitionState(resident=true,error=e.message?:"Audio capture failed"))}}

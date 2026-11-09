@@ -82,9 +82,13 @@ class MainActivity:Activity(){
   }.setNegativeButton("Cancel",null).show()
  }
  private fun vMenu(anchor:View){val r=ResourceStore(this);val menu=PopupMenu(this,anchor);menu.menu.add(0,7,6,"Recognition algorithm: "+if(store.adaptiveRecognition)"Adaptive (${store.adaptiveInterval}s)" else "Legacy");menu.menu.add(0,6,5,"Advanced");menu.menu.add(0,1,0,"Update");menu.menu.add(0,3,2,"Export debug info");menu.menu.add(0,4,3,"Clear older history and recordings");menu.menu.add(0,5,4,"Watch updates");menu.menu.add(0,2,1,"Automatic update checks").apply{isCheckable=true;isChecked=r.automaticChecks};menu.menu.add(0,8,7,"Wait for 7 fingerprints (about 4 s)").apply{isCheckable=true;isChecked=store.earlyAnswerGate};menu.setOnMenuItemClickListener{item->when(item.itemId){8->{store.earlyAnswerGate=!store.earlyAnswerGate;item.isChecked=store.earlyAnswerGate};7->replayAlgorithm();6->advanced();1->openUpdate();5->watchUpdates();4->confirmCleanup();3->startActivity(Intent(this,ExportActivity::class.java).putExtra(ExportActivity.NEW,true).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP));2->{r.automaticChecks=!r.automaticChecks;item.isChecked=r.automaticChecks}};true};menu.show()}
- private fun advanced(){
+ private fun advanced():android.app.AlertDialog{
   val content=LinearLayout(this).apply{orientation=1;setPadding(dp(20),dp(8),dp(20),0)}
   fun caption(value:String)=TextView(this).apply{text=value;setPadding(0,dp(8),0,dp(8))}
+  content.addView(caption("Phone capture mode"))
+  val capture=Spinner(this).apply{contentDescription="Phone capture mode";adapter=ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,listOf("Default","Camcorder"));setSelection(if(store.phoneCaptureMode=="camcorder")1 else 0)}
+  content.addView(capture)
+  content.addView(caption("Phone microphone only. Both modes use 8 kHz mono audio. Saving a different mode restarts active phone listening."))
   content.addView(caption("Legacy recognition speeds"))
   content.addView(caption("Adaptive searches −6% to +5% automatically. These offsets apply only to Legacy. Normal speed (0%) is always included. Enter offsets from −3% to +3%. Changes apply to the next speed search."))
   content.addView(caption("Number of speeds, including normal"))
@@ -120,13 +124,13 @@ class MainActivity:Activity(){
   dialog.setOnShowListener{
    dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener{
     val result=runCatching{RecognitionSpeeds.validate(listOf(0.0)+fields.map{it.text.toString().trim().toDoubleOrNull()?:error("Enter a percentage for every speed")})}
-    result.onSuccess{store.recognitionSpeeds=it;dialog.dismiss()}.onFailure{Toast.makeText(this,it.message?:"Check the speed values",Toast.LENGTH_LONG).show()}
+    result.onSuccess{store.recognitionSpeeds=it;val mode=if(capture.selectedItemPosition==1)"camcorder" else "default";val changed=mode!=store.phoneCaptureMode;store.phoneCaptureMode=mode;dialog.dismiss();if(changed&&store.microphone=="phone"&&LiveState.current.listening)startService(Intent(this,RecognitionService::class.java).setAction(RecognitionService.RESTART))}.onFailure{Toast.makeText(this,it.message?:"Check the speed values",Toast.LENGTH_LONG).show()}
    }
    dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener{
     fields.clear();values=RecognitionSpeeds.defaults.filter{it!=0.0}.toMutableList();count.setSelection(5);rebuild(6)
    }
   }
-  dialog.show()
+  dialog.show();return dialog
  }
  private fun confirmCleanup(){
   android.app.AlertDialog.Builder(this)

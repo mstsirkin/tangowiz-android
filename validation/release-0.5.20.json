@@ -1,0 +1,32 @@
+{
+  "capture_modes_emulator": "passed",
+  "score_cache_enabled": true,
+  "release_gate_windows": 5823,
+  "solo_tango_field_cases": 9,
+  "release": "0.5.20",
+  "application_id": "org.tangowiz.app",
+  "certificate_sha256": "7b5a096154dc754da64bf5077d07c11c158819987157b39424fde5928078d698",
+  "apk_sha256": "a30e12686a6a4d6e3efdd970139b8e53379e4b217a7ecd71947e122a2ff7a86d",
+  "ui_gate": "passed",
+  "jvm_tests": 56,
+  "jvm_failures": 0,
+  "cases": [
+    {
+      "mode": "default",
+      "fully_drained": true,
+      "completed": 2,
+      "accepted": 1,
+      "worker_errors": 0
+    },
+    {
+      "mode": "baseline",
+      "fully_drained": true,
+      "completed": 0,
+      "accepted": 0,
+      "worker_errors": 0
+    }
+  ],
+  "tested_actual_signed_release_apk": true,
+  "emulator": "API 35 x86_64, 4 CPU, 4096MB RAM",
+  "physical_phone_timing": false
+}
