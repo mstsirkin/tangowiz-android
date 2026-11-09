@@ -8,7 +8,7 @@ The latter two commands MUST fail (negative controls).
 import ctypes as C,json,os,pathlib,shutil,struct,subprocess,tempfile,unittest
 import numpy as np
 ROOT=pathlib.Path(__file__).resolve().parents[1];CPP=ROOT/'app/src/main/cpp'
-TIMING={'elapsedMs','cpuMs','lookupMs','groupingMs'}
+TIMING={'elapsedMs','cpuMs','lookupMs','groupingMs','scoreCacheEnabled'}
 def comparable(r):return {k:v for k,v in r.items() if k not in TIMING}
 def fixture(path):
  rng=np.random.default_rng(20261108);n=512;blocks=n//16
@@ -46,11 +46,11 @@ class ScoreCacheTests(unittest.TestCase):
  @classmethod
  def setUpClass(cls):
   cls.temp=tempfile.TemporaryDirectory();cls.dir=pathlib.Path(cls.temp.name);cls.catalog=cls.dir/'catalog.bin';cls.vectors=fixture(cls.catalog);cls.variants={}
-  for name,flags in [('baseline',[]),('cached',['-DTANGO_SCORE_CACHE']),('limited',['-DTANGO_SCORE_CACHE','-DTANGO_SCORE_CACHE_LIMIT=4'])]:
+  for name,flags in [('baseline',['-DTANGO_SCORE_CACHE=0']),('cached',['-DTANGO_SCORE_CACHE=1']),('limited',['-DTANGO_SCORE_CACHE=1','-DTANGO_SCORE_CACHE_LIMIT=4'])]:
    source=CPP
    if os.environ.get('TANGO_TEST_UNBOUNDED_CACHE') and name=='limited':
     source=cls.dir/'mutant';shutil.copytree(CPP,source);p=source/'recognition.cpp';s=p.read_text();needle='if(frame.scoreCache.size()<TANGO_SCORE_CACHE_LIMIT)';assert needle in s;p.write_text(s.replace(needle,'if(true)'))
-   if os.environ.get('TANGO_TEST_DISABLE_CACHE') and name=='cached':flags=[]
+   if os.environ.get('TANGO_TEST_DISABLE_CACHE') and name=='cached':flags=['-DTANGO_SCORE_CACHE=0']
    target=cls.dir/(name+'.so')
    subprocess.run(['g++','-std=c++17','-O2','-fno-fast-math','-ffp-contract=off','-fPIC','-shared','-DTANGO_SCORE_CACHE_TESTING','-DTANGO_RECOVERY_API',*flags,'-I',str(source),'-I',str(ROOT/'tests/host'),str(ROOT/'tests/host/score_cache_bridge.cpp'),str(source/'recognition.cpp'),str(source/'scanner.cpp'),'-o',str(target)],check=True)
    cls.variants[name]=Native(target)

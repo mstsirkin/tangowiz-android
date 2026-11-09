@@ -127,4 +127,4 @@ TANGO_TEST_DISABLE_CACHE=1 python3 tests/test_score_cache.py ScoreCacheTests.tes
 TANGO_TEST_UNBOUNDED_CACHE=1 python3 tests/test_score_cache.py ScoreCacheTests.test_cache_bound_and_overflow_preserve_results
 ```
 
-The cache implementation is opt-in (`TANGO_SCORE_CACHE`) and is not enabled in production builds yet. Its maximum is 4096 entries per retained frame; old frames own and release their entries. Activation requires the app release checks, including actual emulator recognition, before APK distribution.
+The cache is enabled by default in the shared native header (`TANGO_SCORE_CACHE=1`), so Android and host release-fixture builds exercise the same implementation. Tests explicitly compile `TANGO_SCORE_CACHE=0` as the uncached oracle. Its maximum is 4096 entries per retained frame; old frames own and release their entries. Activation requires the app release checks, including actual emulator recognition, before APK distribution.

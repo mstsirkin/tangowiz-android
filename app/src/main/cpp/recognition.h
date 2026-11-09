@@ -1,10 +1,13 @@
 #pragma once
+#ifndef TANGO_SCORE_CACHE
+#define TANGO_SCORE_CACHE 1
+#endif
 #include <cstdint>
 #include <string>
 #include <vector>
 #include <map>
 #include <tuple>
-#ifdef TANGO_SCORE_CACHE
+#if TANGO_SCORE_CACHE
 #include <unordered_map>
 #endif
 #include <chrono>
@@ -13,7 +16,7 @@
 namespace tangowiz {
 struct Slice {uint64_t offset,size;};
 struct Frame {std::vector<float> vector;std::vector<int64_t> neighbors;
-#ifdef TANGO_SCORE_CACHE
+#if TANGO_SCORE_CACHE
  std::unordered_map<uint64_t,float> scoreCache;
 #endif
 };
@@ -22,7 +25,7 @@ class Engine {
  friend struct ScoreCacheTestProbe;
  uint64_t scoreCacheHits=0,scoreCacheMisses=0;
 #endif
-#ifdef TANGO_SCORE_CACHE
+#if TANGO_SCORE_CACHE
 #ifndef TANGO_SCORE_CACHE_LIMIT
 #define TANGO_SCORE_CACHE_LIMIT 4096
 #endif

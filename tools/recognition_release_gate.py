@@ -104,6 +104,7 @@ def worker(args,config,save):
   for r in sample[:40]:new.search(a,r['v'],float(r['t']))
   recent=new.recent(a)
   for r in sample[30:40]:fresh=new.search(b,r['v'],float(r['t']))
+  require(fresh.get('scoreCacheEnabled') is True,'Release candidate did not enable the score cache')
   require(comparable(recent)==comparable(fresh),'Recent matching differs from ten fresh frames')
   require(abs(top(recent)['score']-new.lib.phone_recent(a,10))<1e-6,'Recent candidate differs from score guard')
   new.retain(a)
@@ -152,7 +153,7 @@ def worker(args,config,save):
  solo_tango_field_report=validate_saved_phone_field_fixtures(config,out/'candidate.so')
  save(out/'solo-tango-field-report.json',solo_tango_field_report)
  require(signature(args.candidate_root)==args.source_signature,'Candidate sources changed during release validation')
- report=dict(passed=True,score_cache_unit_tests=10,solo_tango_field_cases=len(solo_tango_field_report['cases']),source_signature=args.source_signature,fixture_manifest_sha256=config['fixture_manifest_sha256'],index_bundle=manifest['index_bundle'],windows=done,baseline_strong_windows=strong_count,cases=cases,cpu_affinity=cores,host_wall_seconds=time.monotonic()-began,method='Exact production C++ and Java policy with saved phone embeddings; frozen legacy comparator and pinned index. No microphone audio or model inference. Alternate-speed asynchronous workers and physical-phone timing are outside this native regression. Emulator release checks remain separate.')
+ report=dict(passed=True,score_cache_enabled=True,score_cache_unit_tests=10,solo_tango_field_cases=len(solo_tango_field_report['cases']),source_signature=args.source_signature,fixture_manifest_sha256=config['fixture_manifest_sha256'],index_bundle=manifest['index_bundle'],windows=done,baseline_strong_windows=strong_count,cases=cases,cpu_affinity=cores,host_wall_seconds=time.monotonic()-began,method='Exact production C++ and Java policy with saved phone embeddings; frozen legacy comparator and pinned index. No microphone audio or model inference. Alternate-speed asynchronous workers and physical-phone timing are outside this native regression. Emulator release checks remain separate.')
  save(out/'report.json',report);status('complete',done,total)
 def main():
  parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--config',type=pathlib.Path,default=pathlib.Path(os.environ.get('TANGOWIZ_RELEASE_FIXTURES',pathlib.Path.home()/'.config/tangowiz/recognition-release-fixtures.json')));parser.add_argument('--output',type=pathlib.Path,default=REPO/'build/reports/recognition-release');parser.add_argument('--candidate-root',type=pathlib.Path,default=REPO);parser.add_argument('--worker',action='store_true');parser.add_argument('--source-signature');args=parser.parse_args();args.candidate_root=args.candidate_root.resolve()

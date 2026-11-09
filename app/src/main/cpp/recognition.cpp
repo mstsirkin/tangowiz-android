@@ -45,7 +45,7 @@ std::vector<int64_t> Engine::neighbors(const float*q,std::vector<float>*output){
 float Engine::similarity(const float*q,uint64_t id)const {
  if(id>=ntotal)return -1;uint64_t slot=reverse[id];if(slot>=nblocks*16)return -1;uint64_t block=slot/16,lane=slot%16;auto list=std::upper_bound(offsets,offsets+nlist+1,(int64_t)block)-offsets-1;float sum=0;for(int d=0;d<128;d++)sum+=q[d]*coarse[list*128+d];for(int j=0;j<64;j++){int code=codes[(block*64+j)*16+lane];sum+=q[j*2]*pq[(j*256+code)*2]+q[j*2+1]*pq[(j*256+code)*2+1];}return sum;
 }
-#ifdef TANGO_SCORE_CACHE
+#if TANGO_SCORE_CACHE
 // Frame vectors and catalog bytes are immutable. Cache the exact float result;
 // summation order and candidate generation remain unchanged. Cache ownership
 // follows the frame through eviction, speed expiry, retention and resets.
@@ -94,7 +94,7 @@ std::string Engine::search(const float*e,int count,float speed,float offset){
  using Hit=Ranked;std::map<uint64_t,Hit> best;
  for(auto&st:streams){if(st.first!=key)continue;auto&fs=st.second;int n=fs.size();std::set<int64_t> starts;for(int j=0;j<n;j++)for(auto id:fs[j].neighbors)if(id>=j&&id-j+n<=int64_t(ntotal))starts.insert(id-j);
  for(auto start:starts){uint64_t tr=std::upper_bound(bounds,bounds+nrefs+1,start)-bounds-1;if(tr>=nrefs||start+n>bounds[tr+1])continue;float score=0;
-#ifdef TANGO_SCORE_CACHE
+#if TANGO_SCORE_CACHE
  for(int j=0;j<n;j++)score+=cachedSimilarity(fs[j],start+j);
 #else
  for(int j=0;j<n;j++)score+=similarity(fs[j].vector.data(),start+j);
@@ -131,7 +131,7 @@ std::string Engine::render(const std::map<uint64_t,Ranked>&best,size_t frameCoun
   }
  }
  const auto groupingEnd=std::chrono::steady_clock::now();
- std::ostringstream out;out<<"{\"catalogFormat\":"<<formatVersion<<",\"matcher\":\"pq8-sequence-reconstruction\",\"calibrated\":false,\"candidates\":[";
+ std::ostringstream out;out<<"{\"scoreCacheEnabled\":"<<(TANGO_SCORE_CACHE?"true":"false")<<",\"catalogFormat\":"<<formatVersion<<",\"matcher\":\"pq8-sequence-reconstruction\",\"calibrated\":false,\"candidates\":[";
  // Expose the bounded recording pool so presentation can choose a different
  // orchestra even when the first several recording groups share one credit.
  for(size_t index=0;index<std::min<size_t>(16,groups.size());index++){

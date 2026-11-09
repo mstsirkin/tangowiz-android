@@ -9,7 +9,7 @@ struct ScoreCacheTestProbe {
   uint64_t value=0;
   for(auto&stream:e.streams)for(auto&frame:stream.second){
    if(which==4){++value;continue;}
-#ifdef TANGO_SCORE_CACHE
+#if TANGO_SCORE_CACHE
    if(which==2)value+=frame.scoreCache.size();
    if(which==3)value=std::max<uint64_t>(value,frame.scoreCache.size());
 #endif
