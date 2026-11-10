@@ -63,12 +63,20 @@ class MainActivity:Activity(){
   listen=icon("▶","Start listening"){toggle()};recognitionControls.addView(listen,LinearLayout.LayoutParams(0,-1,1f))
   recognitionControls.addView(icon("↺","Reset recognition, keep last two seconds"){if(LiveState.current.listening)startService(Intent(this,RecognitionService::class.java).setAction(RecognitionService.RESET))}.apply{id=103},LinearLayout.LayoutParams(dp(76),-1).apply{leftMargin=dp(8)})
   historyAdapter=object:BaseAdapter(){override fun getCount()=historyRows.size;override fun getItem(p:Int)=historyRows[p];override fun getItemId(p:Int)=p.toLong();override fun getView(p:Int,old:View?,parent:android.view.ViewGroup?):View {val r=historyRows[p];val credit=Candidate.fromJson(r);val item=(old as? LinearLayout)?:LinearLayout(this@MainActivity).apply{orientation=1;setPadding(0,dp(9),0,dp(9));addView(text("",16f));addView(text("",17f))};val time=runCatching{DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault()).format(Instant.parse(r.getString("time")))}.getOrDefault("");val header="$time   ${visibleLabel(credit.display("orchestra").ifEmpty{"?"})}   ${r.optInt("confidence_score")}%"+(if(r.optJSONObject("dj")!=null)" · DJ "+if(r.getJSONObject("dj").optBoolean("enabled"))"on" else "off" else "");val detail=listOf(credit.display("title"),credit.display("singer"),credit.display("year")).filter{it.isNotEmpty()}.joinToString(" · ");(item.getChildAt(0) as TextView).apply{text=header;maxLines=2;ellipsize=android.text.TextUtils.TruncateAt.END;contentDescription=header};(item.getChildAt(1) as TextView).apply{text=visibleLabel(detail);maxLines=2;ellipsize=android.text.TextUtils.TruncateAt.END;contentDescription=detail};item.setOnClickListener{details(credit)};item.alpha=if(r.optString("state")=="strong")1f else .65f;return item}}
-  history=ListView(this).apply{adapter=historyAdapter;divider=null;setBackgroundColor(bg)};root.addView(history,LinearLayout.LayoutParams(-1,0,1f));render();handleWatchLaunch()
+  history=ListView(this).apply{adapter=historyAdapter;divider=null;setBackgroundColor(bg)};root.addView(history,LinearLayout.LayoutParams(-1,0,1f));render();if(!handleAudioReplay())handleWatchLaunch()
  }
  override fun onStart(){super.onStart();if(!::store.isInitialized||!ensureResources())return;foreground=true;LiveState.listeners.add(changed);ResourceProgress.listeners.add(resourceChanged);render();showUpdateOffer();if(ResourceStore(this).dueAutomaticCheck())window.decorView.post{if(foreground)startForegroundService(Intent(this,ResourceDownloadService::class.java).setAction("CHECK").putExtra("download",false))}}
  override fun onStop(){foreground=false;LiveState.listeners.remove(changed);ResourceProgress.listeners.remove(resourceChanged);super.onStop()}
  override fun onDestroy(){if(receiverRegistered)unregisterReceiver(exitReceiver);super.onDestroy()}
- override fun onNewIntent(value:Intent){super.onNewIntent(value);intent=value;if(ensureResources())handleWatchLaunch()}
+ override fun onNewIntent(value:Intent){super.onNewIntent(value);intent=value;if(ensureResources()&&!handleAudioReplay())handleWatchLaunch()}
+ private fun handleAudioReplay():Boolean {
+  if(intent.action!=AudioReplay.ACTION)return false
+  val request=Intent(intent);intent.action=null
+  var prepared:AudioReplay.Session?=null
+  try{prepared=AudioReplay.prepare(this,request);startForegroundService(Intent(this,RecognitionService::class.java).setAction(RecognitionService.RESUME))}
+  catch(e:Exception){prepared?.let{it.finish(false,e.message?:"Replay failed");AudioReplay.release(it)};Toast.makeText(this,e.message?:"Replay failed",Toast.LENGTH_LONG).show()}
+  return true
+ }
  private fun ensureResources():Boolean{if(ResourceStore(this).current()!=null)return true;startActivity(Intent(this,SetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP));finish();return false}
  private fun openUpdate(){startActivity(Intent(this,SetupActivity::class.java).putExtra(SetupActivity.UPDATE,true))}
  private fun replayAlgorithm(){

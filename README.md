@@ -130,3 +130,36 @@ TANGO_TEST_UNBOUNDED_CACHE=1 python3 tests/test_score_cache.py ScoreCacheTests.t
 ```
 
 The cache is enabled by default in the shared native header (`TANGO_SCORE_CACHE=1`), so Android and host release-fixture builds exercise the same implementation. Tests explicitly compile `TANGO_SCORE_CACHE=0` as the uncached oracle. Its maximum is 4096 entries per retained frame; old frames own and release their entries. Activation requires the app release checks, including actual emulator recognition, before APK distribution.
+
+### Replay recorded audio and inspect watch updates
+
+The existing phone application accepts an explicit replay intent while recognition
+is paused. Supply raw little-endian PCM16, mono, 8000 Hz, in complete half-second
+blocks. Copy it to `/data/local/tmp/tangowiz-replay-NAME.pcm16`, then run:
+
+```sh
+adb shell am start -W -n org.tangowiz.app/.MainActivity \
+  -a org.tangowiz.app.REPLAY_AUDIO \
+  --es pcm /data/local/tmp/tangowiz-replay-NAME.pcm16 \
+  --ez dry_run_watch true
+```
+
+Playback feeds the normal recognition service at the original playback pace,
+including its native frontend, model, Adaptive workers, presentation rules and
+watch update scheduler. It uses the installed resources and current settings.
+The notification identifies audio replay; replay sessions have a `replay-`
+prefix. Pause or Exit stops replay normally. Starting another replay while
+listening is rejected.
+
+Results are saved under the application's external files directory,
+`Android/data/org.tangowiz.app/files/replays/replay-TIMESTAMP/`. `status.json`
+reports completion/failure and processed audio seconds. `watch-trace.jsonl`
+records recognition states, every watch scheduling decision (including skipped
+updates), and the exact base JSON payload prepared for publication. Normal
+session logs and saved fingerprints are copied there after processing drains.
+
+`dry_run_watch` defaults to true: log the scheduled payloads without transmitting
+them to the watch. This tests phone decisions and scheduling, not delivery or
+watch rendering. Setting it to false explicitly permits normal transmission.
+The replay does not change capture or recognition preferences. It runs inside
+the existing application; update it with the same application ID and signing key.

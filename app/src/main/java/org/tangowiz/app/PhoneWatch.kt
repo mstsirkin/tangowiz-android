@@ -54,6 +54,7 @@ object PhoneWatch {
    .put("phase",if(pendingListening==true&&!live.listening)"Starting phone…" else if(live.listening&&store.microphone=="watch"&&!WatchAudioInput.connected)"Waiting for watch audio" else live.phase)
    .put("ready",engineReady&&live.listening).put("error",live.error).put("best",candidate(live.best,bundle,calibration)).put("second",candidate(live.second,bundle,calibration)).put("updatedAt",System.currentTimeMillis())
  }
+ fun awaitReplayTrace(){network.submit{}.get(15,TimeUnit.SECONDS)}
  fun peerConnected(ctx:Context){init(ctx);captureRequested=false;changed()}
  fun changed(){if(initialized)scheduleState(true)}
  private fun scheduleState(force:Boolean=false){
@@ -64,6 +65,7 @@ object PhoneWatch {
   val displayPercent=live.best?.let{ConfidenceCalibration.percent(ResourceStore(context).current(),it.rankingScore)}?:0
   val confident=live.listening&&live.error.isEmpty()&&WatchUpdateSettings.immediate(live.best!=null,displayPercent,Store(context).watchImmediatePercent)
   val decision=pushPolicy.observe(SystemClock.elapsedRealtime(),Store(context).watchUpdateInterval,key,confident,force)
+  AudioReplay.current?.log("watch_schedule",JSONObject().put("decision",decision.name).put("confident",confident).put("force",force).put("interval_ms",Store(context).watchUpdateInterval).put("immediate_percent",Store(context).watchImmediatePercent).put("current_percent",displayPercent).put("phone_audio_seconds",live.seconds))
   if(decision==WatchPushPolicy.Decision.SKIP)return
   if(decision==WatchPushPolicy.Decision.NEWLY_CONFIDENT)urgentState.set(true)
   stateDirty.set(true)
@@ -75,6 +77,10 @@ object PhoneWatch {
   runCatching{
    val urgent=urgentState.getAndSet(false)
    val snapshot=state();val now=SystemClock.elapsedRealtime()
+   val replay=AudioReplay.current
+   val dataDue=urgent||now-lastSent>=Store(context).watchUpdateInterval
+   replay?.log("watch_publish",JSONObject().put("payload",snapshot).put("urgent",urgent).put("data_item_due",dataDue).put("phone_audio_seconds",LiveState.current.seconds))
+   if(replay?.dryRunWatch==true){if(dataDue)lastSent=now;return@runCatching}
    val nodes=Tasks.await(Wearable.getNodeClient(context).connectedNodes,10,TimeUnit.SECONDS)
    for(node in nodes)runCatching{send(node.id,WearMessages.STATE_PATH,forPeer(node.id,snapshot))}
    if(snapshot.optBoolean("ready")&&snapshot.optBoolean("listening")&&snapshot.optString("microphone")=="watch"&&!captureRequested&&nodes.any{it.isNearby}){captureRequested=true;requestCapture(true)}
