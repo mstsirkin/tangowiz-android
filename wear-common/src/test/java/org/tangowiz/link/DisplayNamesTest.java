@@ -35,4 +35,9 @@ public class DisplayNamesTest {
         assertEquals("Unknown ensemble", DisplayNames.orchestra("Unknown ensemble", null, true));
         assertEquals("Caló / Tanturi ?", DisplayNames.orchestra("Caló / Tanturi ?", "Caló", true));
     }
+    @org.junit.Test public void instrumentalDoesNotReserveSingerSpace() {
+        org.junit.Assert.assertEquals("", DisplayNames.singer("Instrumental", false));
+        org.junit.Assert.assertEquals("", DisplayNames.singer("  INSTRUMENTAL  ", true));
+        org.junit.Assert.assertEquals("Carlos Gardel", DisplayNames.singer("Carlos Gardel", true));
+    }
 }

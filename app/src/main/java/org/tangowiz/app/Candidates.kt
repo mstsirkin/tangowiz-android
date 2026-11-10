@@ -37,6 +37,7 @@ object MetadataLabels{
  private fun equivalent(values:List<String>,field:String):List<String>{val choices=linkedMapOf<String,String>();for(v in values){val key=if(field=="orchestra")folded(v).replace(Regex("^(?:orquesta(?: tipica)?|orq(?: tipica)?) +"),"") else folded(v);val old=choices[key];if(old==null||quality(v)>quality(old))choices[key]=v};return choices.values.toList()}
  fun resolve(candidate:Candidate,field:String):List<String>{var values=candidate.labels(field)
   if(field=="orchestra")values=values.map(::shortOrchestra)
+  if(field=="singer")values=values.filterNot{it.trim().equals("instrumental",ignoreCase=true)}
   if(field=="year")return preciseDates(values)
   if(field=="title"){
    val creditWords=(candidate.labels("orchestra")+candidate.labels("singer")).flatMap{folded(it).split(' ')}.filter{it.isNotBlank()}.toSet()

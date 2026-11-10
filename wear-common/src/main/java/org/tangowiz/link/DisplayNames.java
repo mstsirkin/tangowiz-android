@@ -32,6 +32,7 @@ public final class DisplayNames {
     public static String singer(String credit, boolean firstName) {
         if (credit == null) return "";
         String full = credit.trim();
+        if (full.equalsIgnoreCase("instrumental")) return "";
         String prefix = "", suffix = "";
         if (full.startsWith("? ")) { prefix = "? "; full = full.substring(2).trim(); }
         if (full.endsWith(" ?")) { suffix = " ?"; full = full.substring(0, full.length() - 2).trim(); }

@@ -15,4 +15,8 @@ class OrchestraLabelsTest {
   assertEquals("Sexteto Fulvio Salamanca", Candidate("2", "Sexteto Fulvio Salamanca", "").display("orchestra"))
   assertEquals("Fulvio Salamanca y su Trío", Candidate("3", "Fulvio Salamanca y su Trío", "").display("orchestra"))
  }
+ @Test fun instrumentalSingerIsNotDisplayed() {
+  assertEquals("", Candidate("1", "Pedro Laurenz", "Abandono", singer="Instrumental").display("singer"))
+  assertEquals("Héctor Farrel", Candidate("2", "Pedro Laurenz", "Abandono", singer="Héctor Farrel").display("singer"))
+ }
 }
