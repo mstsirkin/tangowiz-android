@@ -89,7 +89,7 @@ object DisplayNamesValidation {
    frame()
    ui{
     val singer=singer();check(singer.text.toString()=="Alberto Podestá")
-    val text=singer.text as Spanned;val span=text.getSpans(0,text.length,AbsoluteSizeSpan::class.java).single()
+    val text=singer.text as? Spanned ?: error("Singer first-name styling missing: view=${singer.width}x${singer.height}, textSize=${singer.textSize}, lineWidth=${singer.layout.getLineWidth(0)}, ellipsis=${singer.layout.getEllipsisCount(0)}, value=${singer.text}");val span=text.getSpans(0,text.length,AbsoluteSizeSpan::class.java).single()
     check(text.subSequence(text.getSpanStart(span),text.getSpanEnd(span)).toString()=="Podestá")
     check(span.size>singer.textSize&&singer.layout.lineCount==1&&singer.layout.getEllipsisCount(0)==0)
    }

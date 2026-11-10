@@ -10,6 +10,7 @@ import android.view.Gravity
 import android.widget.TextView
 import org.tangowiz.link.DisplayNames
 import org.tangowiz.link.SingerCreditReveal
+import org.tangowiz.link.SingerSizing
 
 /** Tapping reveals the full credit inline for eight seconds without covering live recognition. */
 class SingerNameView(context:Context):TextView(context){
@@ -33,18 +34,20 @@ class SingerNameView(context:Context):TextView(context){
   val display=DisplayNames.singer(full,showFirst);val surname=if(showFirst)DisplayNames.surname(full) else null
   val width=width-compoundPaddingLeft-compoundPaddingRight;val height=height-compoundPaddingTop-compoundPaddingBottom
   var styled:SpannableString?=null
+  var firstNameSize=22
   if(surname!=null&&width>0&&height>0){
    val at=display.lastIndexOf(surname)
-   for(size in 26 downTo 22){
+   for(size in 26 downTo 18){
     val candidate=SpannableString(display)
     candidate.setSpan(AbsoluteSizeSpan(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP,size.toFloat(),resources.displayMetrics).toInt()),at,at+surname.length,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-    val metrics=TextPaint(paint).apply{textSize=TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP,22f,resources.displayMetrics)}
+    val firstSize=SingerSizing.firstNameSize(size)
+    val metrics=TextPaint(paint).apply{textSize=TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP,firstSize.toFloat(),resources.displayMetrics)}
     val layout=StaticLayout.Builder.obtain(candidate,0,candidate.length,metrics,width).setIncludePad(false).build()
-    if(layout.lineCount==1&&layout.height<=height&&layout.getLineWidth(0)<=width+.5f){styled=candidate;break}
+    if(layout.lineCount==1&&layout.height<=height&&layout.getLineWidth(0)<=width+.5f){styled=candidate;firstNameSize=firstSize;break}
    }
   }
   setTypeface(null,Typeface.NORMAL)
-  if(styled!=null){setAutoSizeTextTypeWithDefaults(AUTO_SIZE_TEXT_TYPE_NONE);setTextSize(TypedValue.COMPLEX_UNIT_SP,22f);text=styled}
+  if(styled!=null){setAutoSizeTextTypeWithDefaults(AUTO_SIZE_TEXT_TYPE_NONE);setTextSize(TypedValue.COMPLEX_UNIT_SP,firstNameSize.toFloat());text=styled}
   else{setAutoSizeTextTypeUniformWithConfiguration(22,26,1,TypedValue.COMPLEX_UNIT_SP);text=display}
   contentDescription="Singer: $full; "+if(reveal.visible(SystemClock.uptimeMillis()))"tap to hide full credit" else "tap to show full credit temporarily"
  }
