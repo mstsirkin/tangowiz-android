@@ -72,7 +72,7 @@ object PhoneWatch {
   if(stateQueued.compareAndSet(false,true))network.execute{try{do{stateDirty.set(false);publishState()}while(stateDirty.get())}finally{stateQueued.set(false);if(stateDirty.get())scheduleState(true)}}
  }
  private fun forPeer(node:String,value:JSONObject):JSONObject{if(peerKeywords[node]==true)return value;return JSONObject(value.toString()).apply{optJSONObject("best")?.remove("orchestraKeyword");optJSONObject("second")?.remove("orchestraKeyword")}}
- private fun send(node:String,path:String,value:JSONObject){val bytes=value.toString().toByteArray();require(bytes.size<=90000){"Watch message too large"};Wearable.getMessageClient(context).sendMessage(node,path,bytes)}
+ private fun send(node:String,path:String,value:JSONObject){val replay=AudioReplay.current;replay?.log("watch_message",JSONObject().put("path",path).put("payload",value));if(replay?.dryRunWatch==true)return;val bytes=value.toString().toByteArray();require(bytes.size<=90000){"Watch message too large"};Wearable.getMessageClient(context).sendMessage(node,path,bytes)}
  private fun publishState(){
   runCatching{
    val urgent=urgentState.getAndSet(false)

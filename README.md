@@ -155,7 +155,8 @@ Results are saved under the application's external files directory,
 `Android/data/org.tangowiz.app/files/replays/replay-TIMESTAMP/`. `status.json`
 reports completion/failure and processed audio seconds. `watch-trace.jsonl`
 records recognition states, every watch scheduling decision (including skipped
-updates), and the exact base JSON payload prepared for publication. Normal
+updates), the exact base JSON payload prepared for publication, and explicit refresh/control
+reply messages. Normal
 session logs and saved fingerprints are copied there after processing drains.
 
 `dry_run_watch` defaults to true: log the scheduled payloads without transmitting
