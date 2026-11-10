@@ -41,7 +41,7 @@ object PhoneWatch {
  private fun candidate(c:Candidate?,bundle:BundleSnapshot?,calibration:ConfidenceCalibration.Parameters):Any {
   c?:return JSONObject.NULL
   val result=JSONObject().put("id",c.id).put("orchestra",c.display("orchestra").take(500)).put("title",c.display("title").take(1000)).put("singer",c.display("singer").take(300)).put("year",c.display("year").take(100)).put("score",c.score).put("rankingScore",c.rankingScore).put("dj",DjPopularity.record(c)).put("percent",calibration.percent(c.rankingScore))
-  CatalogKeywords.hint(bundle,c.display("orchestra"))?.let{result.put("orchestraKeyword",it.json())}
+  CatalogKeywords.hint(bundle,c.orchestra.ifBlank{c.display("orchestra")},c.display("orchestra"))?.let{result.put("orchestraKeyword",it.json())}
   return result
  }
  @Synchronized fun state():JSONObject {

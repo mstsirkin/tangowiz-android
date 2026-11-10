@@ -12,12 +12,23 @@ object CatalogKeywords {
  private var cachedDirectory=""
  private var cached=emptyMap<String,Hint>()
  private fun key(s:String)=Normalizer.normalize(s,Normalizer.Form.NFD).replace(Regex("\\p{M}+"),"").lowercase(Locale.ROOT).replace(Regex("[^\\p{L}\\p{N}]+")," ").trim()
- @Synchronized fun hint(bundle:BundleSnapshot?,name:String):Hint?{
-  if(bundle==null||name.contains('/')||name.contains('?')||name.contains('|'))return null
+ internal fun findHint(table:Map<String,Hint>,name:String):Hint? {
+  table[key(name)]?.let{return it}
+  val suffix=Regex("(?iu)\\s+y\\s+su\\s+orq(?:uesta)?\\.?\\s*(?:(?:t[ií]pica|tip)\\.?)?\\s*$")
+  val prefix=Regex("(?iu)^(?:orquesta(?:\\s+t[ií]pica)?|orq\\.?(?:\\s+t[ií]p(?:ica)?\\.?)?)\\s+")
+  val noSuffix=name.replace(suffix, "").trim()
+  table[key(noSuffix)]?.let{return it}
+  val stripped=noSuffix.replace(prefix, "").trim()
+  table[key(stripped)]?.let{return it}
+  if(stripped!=noSuffix){val noDe=stripped.replace(Regex("(?iu)^de\\s+"), "").trim();if(noDe!=stripped)table[key(noDe)]?.let{return it}}
+  return null
+ }
+ @Synchronized fun hint(bundle:BundleSnapshot?,name:String,displayName:String=name):Hint?{
+  if(bundle==null||listOf(name,displayName).any{it.contains('/')||it.contains('?')||it.contains('|')})return null
   val file=File(bundle.directory,"orchestra-keywords.json")
   val cacheKey="${bundle.directory.absolutePath}|${file.length()}|${file.lastModified()}"
   if(cacheKey!=cachedDirectory){cached=read(bundle);cachedDirectory=cacheKey}
-  return cached[key(name)]
+  return findHint(cached,name).takeIf{it!=null} ?: findHint(cached,displayName)
  }
  fun read(bundle:BundleSnapshot):Map<String,Hint> = runCatching{
   val spec=JSONObject(File(bundle.directory,"verified.json").readText()).optJSONObject("files")?.optJSONObject("orchestra-keywords.json")?:return emptyMap()
