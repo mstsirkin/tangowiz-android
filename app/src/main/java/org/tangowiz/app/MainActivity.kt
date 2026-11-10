@@ -69,12 +69,24 @@ class MainActivity:Activity(){
  override fun onStop(){foreground=false;LiveState.listeners.remove(changed);ResourceProgress.listeners.remove(resourceChanged);super.onStop()}
  override fun onDestroy(){if(receiverRegistered)unregisterReceiver(exitReceiver);super.onDestroy()}
  override fun onNewIntent(value:Intent){super.onNewIntent(value);intent=value;if(ensureResources()&&!handleAudioReplay())handleWatchLaunch()}
+ private var replayWindow=false
+ private fun updateReplayWindow(){
+  if(AudioReplay.current!=null){
+   window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+   if(Build.VERSION.SDK_INT>=27){setShowWhenLocked(true);setTurnScreenOn(true)}
+   replayWindow=true
+  }else if(replayWindow){
+   window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+   if(Build.VERSION.SDK_INT>=27){setShowWhenLocked(false);setTurnScreenOn(false)}
+   replayWindow=false
+  }
+ }
  private fun handleAudioReplay():Boolean {
   if(intent.action!=AudioReplay.ACTION)return false
   val request=Intent(intent);intent.action=null
   var prepared:AudioReplay.Session?=null
-  try{prepared=AudioReplay.prepare(this,request);startForegroundService(Intent(this,RecognitionService::class.java).setAction(RecognitionService.RESUME))}
-  catch(e:Exception){prepared?.let{it.finish(false,e.message?:"Replay failed");AudioReplay.release(it)};Toast.makeText(this,e.message?:"Replay failed",Toast.LENGTH_LONG).show()}
+  try{prepared=AudioReplay.prepare(this,request);updateReplayWindow();startForegroundService(Intent(this,RecognitionService::class.java).setAction(RecognitionService.RESUME))}
+  catch(e:Exception){prepared?.let{it.finish(false,e.message?:"Replay failed");AudioReplay.release(it)};updateReplayWindow();Toast.makeText(this,e.message?:"Replay failed",Toast.LENGTH_LONG).show()}
   return true
  }
  private fun ensureResources():Boolean{if(ResourceStore(this).current()!=null)return true;startActivity(Intent(this,SetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP));finish();return false}
@@ -189,7 +201,7 @@ class MainActivity:Activity(){
   val row=LinearLayout(this);row.addView(limited(c.display("orchestra").ifEmpty{"?"},if(primary)25f else 18f,2).apply{setTypeface(null,Typeface.BOLD)},LinearLayout.LayoutParams(0,-2,1f));row.addView(text("${percent}%",if(primary)25f else 18f).apply{setTextColor(Color.rgb((220*(1-percent/100f)).toInt().coerceIn(0,220),170,95));contentDescription="Experimental confidence estimate ${percent} percent"});panel.addView(row);panel.addView(limited(c.display("title"),if(primary)22f else 17f,3));val detail=listOf(c.display("singer"),c.display("year")).filter{it.isNotEmpty()}.joinToString(" · ");if(detail.isNotEmpty())panel.addView(limited(detail,14f,2))
  }
 
- private fun render(){if(!::store.isInitialized)return;findViewById<Button>(104)?.apply{val available=PhoneWatch.djAvailable();isEnabled=available;isSelected=store.dj&&available;alpha=if(available)1f else .35f;background=box(if(isSelected)Color.rgb(43,100,80) else Color.rgb(43,47,64));contentDescription=if(!available)"DJ unavailable: library has no valid DJ data" else if(isSelected)"DJ on: turn off popularity boost" else "DJ off: turn on popularity boost";tooltipText=contentDescription};findViewById<Button>(102)?.apply{alpha=if(store.microphone=="watch")1f else .45f;background=box(if(store.microphone=="watch")Color.rgb(43,100,80) else Color.rgb(43,47,64));contentDescription=if(store.microphone=="watch")"Switch to phone microphone" else "Use watch microphone"};val s=LiveState.current;findViewById<Button>(103)?.apply{isEnabled=s.listening;alpha=if(s.listening)1f else .45f};candidate(best,s.best,true);candidate(runner,s.second,false);listen.text=if(s.listening)"Ⅱ" else "▶";listen.contentDescription=if(s.listening)"Pause identification" else if(s.resident)"Resume identification" else "Start listening";phase.text=if(s.error.isNotEmpty())s.error else if(s.listening)"${s.phase}  ${s.seconds.toInt()}s" else if(s.resident)"Ⅱ" else "";findViewById<Button>(100).apply{alpha=if(store.audio)1f else .45f;setTextColor(if(store.audio)Color.rgb(255,85,100) else white)};findViewById<Button>(101).apply{alpha=if(store.timing)1f else .45f;background=box(if(store.timing)Color.rgb(43,100,80) else Color.rgb(43,47,64))}
+ private fun render(){if(!::store.isInitialized)return;updateReplayWindow();findViewById<Button>(104)?.apply{val available=PhoneWatch.djAvailable();isEnabled=available;isSelected=store.dj&&available;alpha=if(available)1f else .35f;background=box(if(isSelected)Color.rgb(43,100,80) else Color.rgb(43,47,64));contentDescription=if(!available)"DJ unavailable: library has no valid DJ data" else if(isSelected)"DJ on: turn off popularity boost" else "DJ off: turn on popularity boost";tooltipText=contentDescription};findViewById<Button>(102)?.apply{alpha=if(store.microphone=="watch")1f else .45f;background=box(if(store.microphone=="watch")Color.rgb(43,100,80) else Color.rgb(43,47,64));contentDescription=if(store.microphone=="watch")"Switch to phone microphone" else "Use watch microphone"};val s=LiveState.current;findViewById<Button>(103)?.apply{isEnabled=s.listening;alpha=if(s.listening)1f else .45f};candidate(best,s.best,true);candidate(runner,s.second,false);listen.text=if(s.listening)"Ⅱ" else "▶";listen.contentDescription=if(s.listening)"Pause identification" else if(s.resident)"Resume identification" else "Start listening";phase.text=if(s.error.isNotEmpty())s.error else if(s.listening)"${s.phase}  ${s.seconds.toInt()}s" else if(s.resident)"Ⅱ" else "";findViewById<Button>(100).apply{alpha=if(store.audio)1f else .45f;setTextColor(if(store.audio)Color.rgb(255,85,100) else white)};findViewById<Button>(101).apply{alpha=if(store.timing)1f else .45f;background=box(if(store.timing)Color.rgb(43,100,80) else Color.rgb(43,47,64))}
   val version=LiveState.historyVersion.get();if(version!=historyVersion&&!loadingHistory){loadingHistory=true;Thread{val rows=store.history();val grouped=RecordingHistory.consecutive(rows.filter{ConfidenceVisibility.visible(it.optInt("confidence_score",0))});runOnUiThread{loadingHistory=false;if(LiveState.historyVersion.get()==version){historyRows=grouped.asReversed().take(200);historyVersion=version;historyAdapter.notifyDataSetChanged()}else render()}}.start()}
  }
 }

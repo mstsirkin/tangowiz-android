@@ -148,7 +148,9 @@ Playback feeds the normal recognition service at the original playback pace,
 including its native frontend, model, Adaptive workers, presentation rules and
 watch update scheduler. It uses the installed resources and current settings.
 The notification identifies audio replay; replay sessions have a `replay-`
-prefix. Pause or Exit stops replay normally. Starting another replay while
+prefix. During replay the activity keeps its screen awake; the replay-only
+window flags are cleared when the run ends. Keep TangoWiz in the foreground
+on phones that freeze background applications. Pause or Exit stops replay normally. Starting another replay while
 listening is rejected.
 
 Results are saved under the application's external files directory,
