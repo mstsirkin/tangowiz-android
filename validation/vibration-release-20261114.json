@@ -1,0 +1,25 @@
+{
+  "status": "passed",
+  "commit": "db94b1551cbd9b434ab84a80845b3b965dd8e057",
+  "phone_version": "0.5.23",
+  "watch_version": "0.5.21",
+  "certificate_sha256": "7b5a096154dc754da64bf5077d07c11c158819987157b39424fde5928078d698",
+  "apk_sha256": {
+    "TangoWiz-0.5.23.apk": "e3d2a0265bbc763220eba938d3e1279c04974498b945f78c1820f3c82ebc3931",
+    "TangoWiz-Watch-0.5.21.apk": "fecfd38cb2acdf750c4385da27f84d8d6be814602c3db6c750286816d8fa8a5a"
+  },
+  "actual_signed_release_apks_tested": true,
+  "update_preserves_app_data": true,
+  "phone_and_watch_single_and_double_vibrations_completed": true,
+  "paired_transport_tested": false,
+  "physical_phone_timing": false,
+  "jvm_tests": 64,
+  "jvm_failures": 0,
+  "adaptive_completed": 2,
+  "adaptive_accepted": 1,
+  "adaptive_worker_errors": 0,
+  "native_windows": 5823,
+  "solo_tango_field_cases": 9,
+  "native_run_id": "android-release-recovery-20261114T094811-e0f806",
+  "native_source_signature": "a5223cddefc29d281473b54113c69b96c8d4656e93d7bbe6fa97a84ceb7e17d7"
+}
