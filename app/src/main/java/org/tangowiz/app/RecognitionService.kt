@@ -187,6 +187,7 @@ class RecognitionService:Service(){
    val fallbackResult=java.util.concurrent.atomic.AtomicReference<Triple<JSONObject,Long,Long>?>(null)
    val signalGeneration=java.util.concurrent.atomic.AtomicLong(0)
    val songEnd=SongEndPredictor()
+   val vibration=VibrationSignalPolicy()
    val adaptive=if(store.adaptiveRecognition)AdaptiveRecognizer(bundle!!,store.adaptiveInterval){row->io.execute{store.append(File(dir,"adaptive.jsonl"),row)}} else null;adaptiveWorker=adaptive
    var fallbackEarliestSample=0L
    val fp=DataOutputStream(BufferedOutputStream(File(dir,"fingerprints.bin").outputStream()));fingerprintLog=fp
@@ -218,6 +219,7 @@ class RecognitionService:Service(){
      }
      val boundary=songEnd.takeReset(queryOffset.toDouble())
      if(boundary!=null){
+      vibration.clear()
       NativeEngine.reset(native);signalGeneration.incrementAndGet();fallbackResult.set(null)
       fallbackEarliestSample=sourceStart.toLong();lastLogged=null;logSecond=-60.0
       val transition=JSONObject().put("query_offset",queryOffset).put("predicted_end",boundary.endSeconds).put("group_id",boundary.identity).put("score",boundary.score).put("observations",boundary.observations).put("support_span_seconds",boundary.spanSeconds).put("last_confirmation_age_seconds",queryOffset-boundary.lastConfirmedSeconds)
@@ -270,6 +272,17 @@ class RecognitionService:Service(){
     selectedResult=selectedResult?.let{JSONObject(it.toString()).put("dj",JSONObject().put("requested",djRequested).put("available",djData!=null).put("dataVersion",djData?.version?:""))}
     if(best!=null&&(lastLogged==null||!best.sameRecording(lastLogged!!)||best.djRequested!=lastLogged!!.djRequested||best.djAvailable!=lastLogged!!.djAvailable||best.djVersion!=lastLogged!!.djVersion||offset-logSecond>=5)){val logged=best;val raw=selectedResult;io.execute{store.result(logged,second,offset+1,session,raw)};lastLogged=best;logSecond=offset}
     synchronized(stateLock){if(active(token))LiveState.publish(RecognitionState(listening=true,resident=true,phase="♪",best=best,second=second,seconds=offset+1))}
+    val acoustic=OrchestraPresentation.candidates(selectedResult).sortedByDescending{it.score}
+    val acousticBest=acoustic.firstOrNull()
+    val runnerScore=Candidate.distinctRunner(acousticBest,acoustic)?.score?:0.0
+    val signal=vibration.observe(offset+1,if(settled&&audibleWindow)acousticBest?.groupId else null,acousticBest?.let{ConfidenceCalibration.percent(bundle,it.score)}?:0,acousticBest!=null&&acousticBest.score-runnerScore>=.08,songEnd.prediction(),queue.size<=2&&active(token))
+    // Audio backlog would make a timely warning arrive late in the room.
+    if(signal!=VibrationSignalPolicy.Signal.NONE){
+     val timely=queue.size<=2&&active(token)
+     val receipt=JSONObject().put("time",Instant.now().toString()).put("signal",signal.name).put("audio_seconds",offset+1).put("timely",timely).put("phone_enabled",store.phoneVibration).put("watch_enabled",store.watchVibration)
+     io.execute{store.append(File(dir,"vibration-signals.jsonl"),receipt)}
+     if(timely)PhoneWatch.vibrationSignal(signal)
+    }
     replay?.log("recognition_decision",JSONObject().put("frames",selectedResult?.optInt("frames")?:0).put("settled",settled).put("normal_top_score",nativeBest?.score?:JSONObject.NULL).put("selected_top_score",best?.score?:JSONObject.NULL).put("phone_audio_seconds",offset+1))
     replay?.progress(LiveState.current)
     timing("end_to_end",start,extra=JSONObject().put("audio_seconds",samples/8000.0).put("audio_to_result_lag_ms",(SystemClock.elapsedRealtimeNanos()-start)/1e6-samples/8.0).put("backlog_seconds",queue.size*.5).put("captured_seconds",captured.get()/8000.0))

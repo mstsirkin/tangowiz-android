@@ -2,6 +2,7 @@ package org.tangowiz.link;
 
 /** Shared paths; the phone/watch own message serialization and transport. */
 public final class WearMessages {
+    public static final String VIBRATION_PATH = "/tw/vibration/v1";
     public static final String COMMAND_PATH = "/tw/command";
     public static final String ACK_PATH = "/tw/ack";
     public static final String STATE_PATH = "/tw/state";

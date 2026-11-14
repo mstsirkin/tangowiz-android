@@ -73,6 +73,9 @@ public final class SongEndPredictor {
         }
     }
 
+    /** Read-only: warning consumers must not consume the recognition reset. */
+    public Prediction prediction() { return pending; }
+
     /** Call BEFORE searching the next fingerprint. Each armed ending can fire only once. */
     public Prediction takeReset(double nextQueryOffset) {
         if (!Double.isFinite(nextQueryOffset)) return null;

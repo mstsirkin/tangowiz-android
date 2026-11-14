@@ -1,0 +1,54 @@
+{
+  "status": "passed",
+  "emulator_only": true,
+  "paired_transport_tested": false,
+  "physical_vibration_feel_tested": false,
+  "jvm_tests": 64,
+  "jvm_failures": 0,
+  "adaptive_completed": 2,
+  "adaptive_accepted": 1,
+  "adaptive_worker_errors": 0,
+  "service_signals": [
+    {
+      "time": "2026-11-13T15:29:17.726772Z",
+      "signal": "IDENTIFIED",
+      "audio_seconds": 22,
+      "timely": true,
+      "phone_enabled": false,
+      "watch_enabled": false
+    }
+  ],
+  "verified_at_utc": "2026-11-13T15:30:15.231977+00:00",
+  "android_output_patterns_completed": {
+    "phone": true,
+    "watch": true,
+    "single_ms": [
+      0,
+      180
+    ],
+    "double_ms": [
+      0,
+      180,
+      140,
+      180
+    ]
+  },
+  "backlog_regression": {
+    "failed_before_fix": true,
+    "passed_unchanged_after_fix": true
+  },
+  "watch_emulator_off_body_muting_disabled_for_fixture": true,
+  "source_sha256": {
+    "app/src/main/java/org/tangowiz/app/VibrationSignalPolicy.java": "517026af32c8d661b41f66e60f90617e2fb19831f56764804bcbd6a488e67ea1",
+    "app/src/main/java/org/tangowiz/app/RecognitionService.kt": "1e3d72def6ad4d79aed7f31befb56d09a6da519ef7fab29fa8772a0f0518f073",
+    "app/src/main/java/org/tangowiz/app/SongEndPredictor.java": "76cf9ec61d9eb8d619a59ee1b7bafccd653e464d4f257cb522a8e73ba3f58573",
+    "app/src/main/java/org/tangowiz/app/PhoneWatch.kt": "ede57f7d55bfea087baa84d347c04d81a20247ff398534833b0fd0e4285bdc5d",
+    "app/src/main/java/org/tangowiz/app/MainActivity.kt": "2db41450a24fb2bb1165aa9f7716804b87a766afbd8d0467b33345db76f400fb",
+    "app/src/main/java/org/tangowiz/app/Store.kt": "9b653ee9c27786fb27f27bc17e37cde756bf13bc311182f96bd228ac4e705ffa",
+    "watch/src/main/java/org/tangowiz/wear/WatchVibration.kt": "4804ba032ad288efa7b79b48973e323c53065ae0a041cdc5acac9c53d43b46dc",
+    "watch/src/main/java/org/tangowiz/wear/WatchActivity.kt": "0699038a05cb9c709c575d165564c671cfb9009e3ce11b3f50d0542823df19fd",
+    "watch/src/main/java/org/tangowiz/wear/WatchLink.kt": "382d2225dde5c23d3af9ce2acfa5704fc3a799d451b8c88139bf57ddd406b377",
+    "wear-common/src/main/java/org/tangowiz/link/VibrationPattern.java": "f729ad5ec695a993456d81178a97061534b89d1103011b8cfd8c5070eadfffba",
+    "wear-common/src/main/java/org/tangowiz/link/WearMessages.java": "cececd270380c392c0dd26c317090fcec9cb7e455de95ba5bb46e3f43b49e5bb"
+  }
+}

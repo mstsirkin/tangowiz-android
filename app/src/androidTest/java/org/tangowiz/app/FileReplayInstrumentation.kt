@@ -17,6 +17,7 @@ class FileReplayInstrumentation:Instrumentation(){
  private lateinit var args:Bundle
  override fun onCreate(arguments:Bundle?){super.onCreate(arguments);args=arguments?:Bundle();start()}
  override fun onStart(){
+  if(args.getString("vibration")=="true"){VibrationValidation.run(this);return}
   if(args.getString("capture_modes")=="true"){
    try{val result=CaptureModeValidation.run(this);finish(0,Bundle().apply{putString("capture_modes","passed");putString("capture_details",result)})}catch(t:Throwable){finish(1,Bundle().apply{putString("capture_modes","failed");putString("error",t.stackTraceToString())})};return
   }

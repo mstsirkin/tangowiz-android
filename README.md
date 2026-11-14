@@ -166,3 +166,11 @@ them to the watch. This tests phone decisions and scheduling, not delivery or
 watch rendering. Setting it to false explicitly permits normal transmission.
 The replay does not change capture or recognition preferences. It runs inside
 the existing application; update it with the same application ID and signing key.
+
+### Vibration signal
+
+The phone's **More options → Vibration signal** and the watch's **Vibration signal** control their respective devices independently. Both default to off. Enable either or both while using recognition.
+
+A single 180 ms pulse signals a recording with a stable strong acoustic match (at least 70 displayed percent before any DJ boost, a raw-score lead of 0.08 over a distinct rival, sustained for two audio seconds). Repeated matches do not repeat that signal. A double pulse signals approximately eight seconds remaining, using the existing speed-adjusted ending predictor. It requires consistent, recently confirmed endpoint evidence for that same recording; uncertain, stale or late estimates do not produce a catch-up warning. Recognition resets and new listening sessions rearm identification. Brief pauses do not rearm it.
+
+The current endpoint is the indexed fingerprint extent, which is not yet a separately reviewed musical-ending marker and can include trailing silence. This feature does not trim audio or modify the catalog. A watch must be connected; vibration messages bypass the normal result-update interval, expire quickly, and are not replayed after reconnection. The signals use brief, silent notifications local to each enabled device; the watch requests notification permission when enabling them. Android vibration settings, including watch off-wrist muting, still apply. Emulator checks establish signal logic and Android output calls, not physical vibration feel or Bluetooth latency.
