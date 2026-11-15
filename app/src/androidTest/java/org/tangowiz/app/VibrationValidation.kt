@@ -12,12 +12,13 @@ object VibrationValidation {
  fun run(i:Instrumentation){
   val ctx=i.targetContext;val store=Store(ctx);PhoneWatch.init(ctx)
   val phone=store.phoneVibration;val watch=store.watchVibration
+  val phoneEnd=store.phoneEndVibration;val watchEnd=store.watchEndVibration
   val report=JSONObject();var failure:Throwable?=null;var activity:android.app.Activity?=null
-  fun set(p:Boolean,w:Boolean){
+  fun set(p:Boolean,w:Boolean,pe:Boolean=false,we:Boolean=false){
    val id=UUID.randomUUID().toString()
    val request=JSONObject().put("protocol",1).put("kind","set").put("requestId",id)
     .put("expectedRevision",PhoneWatch.state().getLong("revision"))
-    .put("phoneVibration",p).put("watchVibration",w)
+    .put("phoneVibration",p).put("watchVibration",w).put("phoneEndVibration",pe).put("watchEndVibration",we)
    PhoneWatch.command(ctx,"emulator-validation",request.toString().toByteArray())
    val deadline=android.os.SystemClock.elapsedRealtime()+10000
    while(true){
@@ -26,12 +27,15 @@ object VibrationValidation {
     check(android.os.SystemClock.elapsedRealtime()<deadline);Thread.sleep(50)
    }
    check(Store(ctx).phoneVibration==p&&Store(ctx).watchVibration==w)
+   check(Store(ctx).phoneEndVibration==pe&&Store(ctx).watchEndVibration==we)
    check(PhoneWatch.state().getBoolean("phoneVibration")==p&&PhoneWatch.state().getBoolean("watchVibration")==w)
+   check(PhoneWatch.state().getBoolean("phoneEndVibration")==pe&&PhoneWatch.state().getBoolean("watchEndVibration")==we)
   }
   try{
    check(!LiveState.current.listening)
    activity=i.startActivitySync(android.content.Intent(ctx,MainActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));i.waitForIdleSync()
-   for(p in listOf(false,true))for(w in listOf(false,true))set(p,w)
+   for(p in listOf(false,true))for(w in listOf(false,true))for(pe in listOf(false,true))for(we in listOf(false,true))set(p,w,pe,we)
+   set(true,true,true,true)
    check(VibrationPattern.timings(1).contentEquals(longArrayOf(0,12)))
    check(VibrationPattern.timings(2).contentEquals(longArrayOf(0,12,100,12)))
    val policy=VibrationSignalPolicy();val end=SongEndPredictor()
@@ -50,13 +54,13 @@ object VibrationValidation {
    check(end.takeReset(100.0)!=null)
    check(ctx.getSystemService(android.app.NotificationManager::class.java).activeNotifications.none{it.id in 301..302})
    report.put("notification_absent",true)
-   report.put("status","passed").put("independent_setting_combinations",4)
+   report.put("status","passed").put("independent_setting_combinations",16)
     .put("production_android_output_called",true).put("speed_adjusted_eight_second_policy",true)
     .put("repeated_match_suppressed",true).put("physical_vibration_feel_tested",false)
   }catch(t:Throwable){failure=t;report.put("status","failed").put("error",t.stackTraceToString())}
   finally{
    activity?.let{a->i.runOnMainSync{a.finish()}}
-   store.phoneVibration=phone;store.watchVibration=watch;LiveState.publish(RecognitionState())
+   store.phoneVibration=phone;store.watchVibration=watch;store.phoneEndVibration=phoneEnd;store.watchEndVibration=watchEnd;LiveState.publish(RecognitionState())
    File(ctx.filesDir,"vibration-validation.json").writeText(report.toString(2))
    i.finish(if(failure==null)0 else 1,Bundle().apply{putString("vibration",report.toString())})
   }

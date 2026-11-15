@@ -167,12 +167,14 @@ watch rendering. Setting it to false explicitly permits normal transmission.
 The replay does not change capture or recognition preferences. It runs inside
 the existing application; update it with the same application ID and signing key.
 
-### Vibration signal
+### Vibration signals
 
-The phone's **More options → Vibration signal** and the watch's **Vibration signal** control their respective devices independently. Both default to off. Enable either or both while using recognition.
+The phone's **More options** menu and the watch each offer **Identification vibration** and **End-of-song vibration** independently. Identification inherits that device's previous **Vibration signal** setting; end-of-song vibration starts off and requires an explicit opt-in. New installations default both to off. Either type can be enabled on the phone, watch, or both, including end-of-song vibration with identification vibration off.
 
 A single very light tick signals a stable confident identification; two light ticks signal about eight seconds remaining. Supported devices use LOW_TICK at 10% intensity. The bounded fallback uses 12 ms at amplitude 20/255, only with amplitude control. Devices unable to produce a controlled weak tick do not substitute a full-strength buzz. No haptic notification is posted and the display is not woken.
 
 On the watch, signals require a visible TangoWiz activity, including its dim ambient display. The watch face and other apps suppress them even if the display service remains running. The phone toggle remains independent and works while identification runs. System haptic settings still apply. Watch notification permission is needed for the existing ongoing ambient-display session, not for a tick.
 
 Ending warnings use separate evidence from the stricter matcher-reset decision, with repeated consistent offsets from a confidently identified recording. A short confidence dip or skipped match at the deadline does not discard an already armed warning; stale predictions and confident rival recordings still suppress it. The indexed fingerprint endpoint may include trailing silence. Audio and catalog data are unchanged. Physical feel depends on the device and must be checked on the watch; emulator validation does not establish hardware feel or phone timing.
+
+Display-label comparison ignores spaces, periods, accents and capitalization. It preserves words, numbers, other punctuation and annotations: `4` and `cuatro` remain distinct. Original metadata and acoustic recording identities remain intact; broader equivalences require offline review.

@@ -15,7 +15,7 @@ object SoftHapticValidation {
   fun ui(block:()->Unit){var error:Throwable?=null;i.runOnMainSync{try{block()}catch(t:Throwable){error=t}};error?.let{throw it}}
   fun stage(s:String){report.put("stage",s);File(ctx.filesDir,"soft-haptic-stage.json").writeText(report.toString())}
   fun await(label:String,p:()->Boolean){val end=SystemClock.elapsedRealtime()+45000;while(!p()){check(SystemClock.elapsedRealtime()<end){"Timeout: $label"};Thread.sleep(50)}}
-  fun state(enabled:Boolean){ui{WatchCache.accept(JSONObject().put("revision",++revision).put("updatedAt",System.currentTimeMillis()).put("watchVibration",enabled).put("listening",true).put("microphone","phone").put("best",JSONObject().put("orchestra","Haptic test").put("title","Quiet tick").put("percent",95)))}}
+  fun state(enabled:Boolean){ui{WatchCache.accept(JSONObject().put("revision",++revision).put("updatedAt",System.currentTimeMillis()).put("watchVibration",enabled).put("watchEndVibration",enabled).put("listening",true).put("microphone","phone").put("best",JSONObject().put("orchestra","Haptic test").put("title","Quiet tick").put("percent",95)))}}
   fun event(p:Int)=JSONObject().put("id",UUID.randomUUID().toString()).put("pulses",p).put("sentAt",System.currentTimeMillis())
   fun noSignalNotifications(){check(ctx.getSystemService(NotificationManager::class.java).activeNotifications.none{it.id in 301..302}){"Haptic posted a notification"}}
   fun ambient()=AmbientDisplayActivity::class.java.getDeclaredField("ambient").apply{isAccessible=true}.getBoolean(activity)

@@ -1,0 +1,28 @@
+{
+  "utc": "2026-11-15T21:21:16.944046+00:00",
+  "change": "Conservative display-label equivalence and independent identification/end vibration controls per device",
+  "normalization": {
+    "positive_cases": 16,
+    "negative_cases": 24,
+    "passed": 40,
+    "application_integration_tests": 4,
+    "original_integration_failures": 2,
+    "unchanged_integration_suite_passes_after_fix": true,
+    "recording_ids_unchanged": true,
+    "original_metadata_unchanged": true
+  },
+  "controls": {
+    "legacy_setting": "Retained phone_vibration/watch_vibration keys now control identification only",
+    "ending_default": false,
+    "independent_device_and_signal_switches": true
+  },
+  "validation": {
+    "app_jvm_tests": 112,
+    "shared_jvm_tests": 34,
+    "failures": 0,
+    "phone_watch_and_instrumentation_compilation": "passed",
+    "emulator_run": false,
+    "apk_distribution": false
+  },
+  "scope": "Display normalization and setting separation only; experimental native warning algorithm is not integrated."
+}

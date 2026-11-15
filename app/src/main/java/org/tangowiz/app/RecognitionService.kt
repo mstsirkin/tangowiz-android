@@ -287,7 +287,7 @@ class RecognitionService:Service(){
     // Audio backlog would make a timely warning arrive late in the room.
     if(signal!=VibrationSignalPolicy.Signal.NONE){
      val timely=queue.size<=2&&active(token)
-     val receipt=JSONObject().put("time",Instant.now().toString()).put("signal",signal.name).put("audio_seconds",offset+1).put("predicted_end",warningEnd.prediction()?.endSeconds?:JSONObject.NULL).put("timely",timely).put("phone_enabled",store.phoneVibration).put("watch_enabled",store.watchVibration)
+     val receipt=JSONObject().put("time",Instant.now().toString()).put("signal",signal.name).put("audio_seconds",offset+1).put("predicted_end",warningEnd.prediction()?.endSeconds?:JSONObject.NULL).put("timely",timely).put("phone_enabled",store.phoneVibrationEnabled(if(signal==VibrationSignalPolicy.Signal.IDENTIFIED)1 else 2)).put("watch_enabled",store.watchVibrationEnabled(if(signal==VibrationSignalPolicy.Signal.IDENTIFIED)1 else 2))
      io.execute{store.append(File(dir,"vibration-signals.jsonl"),receipt)}
      if(timely)PhoneWatch.vibrationSignal(signal)
     }

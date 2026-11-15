@@ -38,7 +38,8 @@ class WatchActivity:Activity(){
   button("Updates: ${state.optLong("updateIntervalMs",5000)/1000}s","Result update interval"){WatchUpdatePreferences.showInterval(this)}
   val immediate=state.optInt("immediateUpdatePercent",70)
   button(if(immediate==0)"Immediate: any result" else "Immediate: $immediate%","Immediate update confidence"){WatchUpdatePreferences.showConfidence(this)}
-  button("Vibration signal: ${if(state.optBoolean("watchVibration"))"On" else "Off"}","Vibration signal"){toggleVibrationSignal()}
+  button("Identification vibration: ${if(state.optBoolean("watchVibration"))"On" else "Off"}","Identification vibration"){toggleVibrationSignal()}
+  button("End-of-song vibration: ${if(state.optBoolean("watchEndVibration"))"On" else "Off"}","End-of-song vibration"){WatchLink.set(JSONObject().put("watchEndVibration",!WatchCache.state.optBoolean("watchEndVibration")))}
   button("Display names","Display names"){DisplayPreferences.show(this)}
   button("☷","History"){historyOnly=true;WatchLink.history();render()};scroll.post{scroll.scrollTo(0,position)}
  }

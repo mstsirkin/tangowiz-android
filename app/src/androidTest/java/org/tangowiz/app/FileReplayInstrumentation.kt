@@ -30,7 +30,8 @@ class FileReplayInstrumentation:Instrumentation(){
   val oldMode=store.adaptiveRecognition;val oldInterval=store.adaptiveInterval;args.getString("mode")?.let{store.adaptiveRecognition=it!="baseline"};if(store.adaptiveRecognition)store.adaptiveInterval=args.getString("interval","2").toDouble()
   val oldMic=store.microphone;val oldAudio=store.audio;val oldTiming=store.timing
   val oldPhoneVibration=store.phoneVibration;val oldWatchVibration=store.watchVibration
-  if(args.getString("haptic_end")=="true"){store.phoneVibration=true;store.watchVibration=false}
+  val oldPhoneEndVibration=store.phoneEndVibration;val oldWatchEndVibration=store.watchEndVibration
+  if(args.getString("haptic_end")=="true"){store.phoneVibration=true;store.watchVibration=false;store.phoneEndVibration=true;store.watchEndVibration=false}
   val oldGate=store.earlyAnswerGate;args.getString("early_gate")?.let{store.earlyAnswerGate=it=="on"}
   var activity:android.app.Activity?=null
   val samples=JSONArray();var failure:Throwable?=null
@@ -85,7 +86,7 @@ class FileReplayInstrumentation:Instrumentation(){
   }catch(t:Throwable){failure=t;report.put("status","failed").put("error",t.stackTraceToString()).put("replay_samples",samples)}
   finally{
    runCatching{ctx.startService(Intent(ctx,RecognitionService::class.java).setAction(RecognitionService.EXIT));await("engine exit",45000){LiveState.current.exited}}
-   store.adaptiveRecognition=oldMode;store.adaptiveInterval=oldInterval;store.microphone=oldMic;store.audio=oldAudio;store.timing=oldTiming;store.earlyAnswerGate=oldGate;store.phoneVibration=oldPhoneVibration;store.watchVibration=oldWatchVibration
+   store.adaptiveRecognition=oldMode;store.adaptiveInterval=oldInterval;store.microphone=oldMic;store.audio=oldAudio;store.timing=oldTiming;store.earlyAnswerGate=oldGate;store.phoneVibration=oldPhoneVibration;store.watchVibration=oldWatchVibration;store.phoneEndVibration=oldPhoneEndVibration;store.watchEndVibration=oldWatchEndVibration
    runCatching{activity?.let{runOnMainSync{it.finish()}}}
    File(ctx.filesDir,"file-replay-report.json").writeText(report.toString(2))
    finish(if(failure==null)0 else 1,Bundle().apply{putString("full_report",report.toString());putString("summary",JSONObject().put("status",report.optString("status")).put("input_audio_seconds",report.optDouble("input_audio_seconds")).toString())})

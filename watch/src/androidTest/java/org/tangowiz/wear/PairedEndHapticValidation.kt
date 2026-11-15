@@ -22,7 +22,7 @@ object PairedEndHapticValidation {
    i.runOnMainSync{WatchCache.init(ctx)};i.waitForIdleSync()
    check(Tasks.await(Wearable.getNodeClient(ctx).connectedNodes,30,TimeUnit.SECONDS).any{it.isNearby}){"No paired phone"}
    activity=i.startActivitySync(Intent(ctx,AmbientDisplayActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as AmbientDisplayActivity;i.waitForIdleSync()
-   await("real phone settings"){WatchCache.state.optBoolean("watchVibration")}
+   await("real phone settings"){WatchCache.state.optBoolean("watchVibration")&&WatchCache.state.optBoolean("watchEndVibration")}
    stage("waiting_for_sleep");await("OS ambient entry"){ambient()};stage("ambient_ready")
    await("real recording ending delivered to watch",180000){received().any{it.optInt("pulses")==2&&it.optBoolean("requested")}}
    Thread.sleep(1000)

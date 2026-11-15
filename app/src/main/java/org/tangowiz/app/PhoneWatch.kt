@@ -47,11 +47,12 @@ object PhoneWatch {
  }
  @Synchronized fun state():JSONObject {
   val store=Store(context);val live=LiveState.current;val bundle=ResourceStore(context).current();val calibration=ConfidenceCalibration.parameters(bundle)
-  val signature="${pendingListening?:live.listening}|${store.microphone}|${store.audio}|${store.timing}|${store.watchUpdateInterval}|${store.watchImmediatePercent}|${store.dj}|${store.phoneVibration}|${store.watchVibration}"
+  val signature="${pendingListening?:live.listening}|${store.microphone}|${store.audio}|${store.timing}|${store.watchUpdateInterval}|${store.watchImmediatePercent}|${store.dj}|${store.phoneVibration}|${store.watchVibration}|${store.phoneEndVibration}|${store.watchEndVibration}"
   if(prefs().getString("control_signature","")!=signature)prefs().edit().putString("control_signature",signature).putLong("revision",revision()+1).commit()
   return JSONObject().put("protocol",WearProtocol.VERSION).put("supportedProtocols",JSONArray(listOf(WearProtocol.VERSION))).put("capabilities",JSONArray(listOf(WearProtocol.ORCHESTRA_KEYWORD,WearProtocol.DJ_BOOST))).put("revision",revision()).put("listening",pendingListening?:live.listening)
    .put("microphone",store.microphone).put("audio",store.audio).put("timing",store.timing).put("updateIntervalMs",store.watchUpdateInterval).put("immediateUpdatePercent",store.watchImmediatePercent)
    .put("phoneVibration",store.phoneVibration).put("watchVibration",store.watchVibration)
+   .put("phoneEndVibration",store.phoneEndVibration).put("watchEndVibration",store.watchEndVibration)
    .put("djEnabled",store.dj&&djAvailable()).put("djAvailable",djAvailable())
    .put("phase",if(pendingListening==true&&!live.listening)"Starting phone…" else if(live.listening&&store.microphone=="watch"&&!WatchAudioInput.connected)"Waiting for watch audio" else live.phase)
    .put("ready",engineReady&&live.listening).put("error",live.error).put("best",candidate(live.best,bundle,calibration)).put("second",candidate(live.second,bundle,calibration)).put("updatedAt",System.currentTimeMillis())
@@ -59,11 +60,11 @@ object PhoneWatch {
  fun vibrationSignal(signal:VibrationSignalPolicy.Signal){
   if(!initialized||!LiveState.current.listening||signal==VibrationSignalPolicy.Signal.NONE)return
   val store=Store(context);val pulses=if(signal==VibrationSignalPolicy.Signal.IDENTIFIED)1 else 2
-  AudioReplay.current?.log("vibration_signal",JSONObject().put("pulses",pulses).put("phone_enabled",store.phoneVibration).put("watch_enabled",store.watchVibration).put("phone_audio_seconds",LiveState.current.seconds))
+  AudioReplay.current?.log("vibration_signal",JSONObject().put("pulses",pulses).put("phone_enabled",store.phoneVibrationEnabled(pulses)).put("watch_enabled",store.watchVibrationEnabled(pulses)).put("phone_audio_seconds",LiveState.current.seconds))
   if(AudioReplay.current?.dryRunWatch==true)return
-  if(store.phoneVibration)org.tangowiz.link.VibrationPattern.play(context,pulses)
-  if(store.watchVibration){val sentAt=System.currentTimeMillis();val id=java.util.UUID.randomUUID().toString();haptics.execute{runCatching{
-   if(System.currentTimeMillis()-sentAt>1500||!Store(context).watchVibration||!LiveState.current.listening)return@runCatching
+  if(store.phoneVibrationEnabled(pulses))org.tangowiz.link.VibrationPattern.play(context,pulses)
+  if(store.watchVibrationEnabled(pulses)){val sentAt=System.currentTimeMillis();val id=java.util.UUID.randomUUID().toString();haptics.execute{runCatching{
+   if(System.currentTimeMillis()-sentAt>1500||!Store(context).watchVibrationEnabled(pulses)||!LiveState.current.listening)return@runCatching
    val nodes=Tasks.await(Wearable.getNodeClient(context).connectedNodes,2,TimeUnit.SECONDS)
    if(System.currentTimeMillis()-sentAt>1500)return@runCatching
    for(node in nodes.filter{it.isNearby})send(node.id,WearMessages.VIBRATION_PATH,JSONObject().put("id",id).put("pulses",pulses).put("sentAt",sentAt))
@@ -139,11 +140,13 @@ object PhoneWatch {
   val phoneVibration=if(values.has("phoneVibration"))values.getBoolean("phoneVibration") else store.phoneVibration
   val watchVibration=if(values.has("watchVibration"))values.getBoolean("watchVibration") else store.watchVibration
   store.phoneVibration=phoneVibration;store.watchVibration=watchVibration
+  if(values.has("phoneEndVibration"))store.phoneEndVibration=values.getBoolean("phoneEndVibration")
+  if(values.has("watchEndVibration"))store.watchEndVibration=values.getBoolean("watchEndVibration")
   val djChanged=store.dj!=dj;store.dj=dj
   if(djChanged)store.append(java.io.File(store.root,"settings.jsonl"),JSONObject().put("time",java.time.Instant.now().toString()).put("event","dj_setting_changed").put("djRequested",dj).put("djAvailable",djAvailable()))
   store.microphone=source;store.watchUpdateInterval=interval;store.watchImmediatePercent=immediatePercent;store.audio=audio;store.timing=timing
   pendingListening=listening
-  prefs().edit().putLong("revision",revision()+1).putString("control_signature","$listening|$source|$audio|$timing|$interval|$immediatePercent|$dj|${store.phoneVibration}|${store.watchVibration}").commit()
+  prefs().edit().putLong("revision",revision()+1).putString("control_signature","$listening|$source|$audio|$timing|$interval|$immediatePercent|$dj|${store.phoneVibration}|${store.watchVibration}|${store.phoneEndVibration}|${store.watchEndVibration}").commit()
   if(!listening||source=="phone"){WatchAudioInput.close();captureRequested=false;network.execute{requestCapture(false)}}
   else if(oldSource!=source)captureRequested=false
   pendingListening=listening

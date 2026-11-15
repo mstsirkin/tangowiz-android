@@ -32,6 +32,12 @@ class Store(val context:Context) {
  var earlyAnswerGate:Boolean get()=prefs.getBoolean("early_answer_gate",true);set(v){prefs.edit().putBoolean("early_answer_gate",v).commit()}
  var phoneVibration:Boolean get()=prefs.getBoolean("phone_vibration",false);set(v){prefs.edit().putBoolean("phone_vibration",v).commit()}
  var watchVibration:Boolean get()=prefs.getBoolean("watch_vibration",false);set(v){prefs.edit().putBoolean("watch_vibration",v).commit()}
+ // Existing keys now control identification only, preserving each device's setting.
+ // Ending warnings require a separate, explicit opt-in.
+ var phoneEndVibration:Boolean get()=prefs.getBoolean("phone_end_vibration",false);set(v){prefs.edit().putBoolean("phone_end_vibration",v).commit()}
+ var watchEndVibration:Boolean get()=prefs.getBoolean("watch_end_vibration",false);set(v){prefs.edit().putBoolean("watch_end_vibration",v).commit()}
+ fun phoneVibrationEnabled(pulses:Int)=org.tangowiz.link.VibrationSettings.enabled(pulses,phoneVibration,phoneEndVibration)
+ fun watchVibrationEnabled(pulses:Int)=org.tangowiz.link.VibrationSettings.enabled(pulses,watchVibration,watchEndVibration)
  var audio:Boolean get()=prefs.getBoolean("audio",false); set(v){prefs.edit().putBoolean("audio",v).apply()}
  var timing:Boolean get()=prefs.getBoolean("timing",false); set(v){prefs.edit().putBoolean("timing",v).apply()}
  fun append(file:File,json:JSONObject)=synchronized(SessionFiles.lock){file.appendText(json.toString()+"\n")}

@@ -14,7 +14,7 @@ object WatchVibration {
  }
  @Synchronized fun receive(value:JSONObject):Boolean{
   if(!WatchHapticSession.visible())return result(value,"not_visible")
-  if(!WatchCache.protocolCompatible||!WatchCache.state.optBoolean("watchVibration")||!WatchCache.state.optBoolean("listening"))return result(value,"disabled_or_paused")
+  if(!WatchCache.protocolCompatible||!org.tangowiz.link.VibrationSettings.enabled(value.optInt("pulses"),WatchCache.state.optBoolean("watchVibration"),WatchCache.state.optBoolean("watchEndVibration"))||!WatchCache.state.optBoolean("listening"))return result(value,"disabled_or_paused")
   val id=value.optString("id");val pulses=value.optInt("pulses")
   val age=System.currentTimeMillis()-value.optLong("sentAt")
   if(id.length !in 1..100||pulses !in 1..2||age !in -3000L..3000L)return result(value,"invalid_or_stale")
