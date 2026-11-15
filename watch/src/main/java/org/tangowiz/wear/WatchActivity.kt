@@ -42,18 +42,10 @@ class WatchActivity:Activity(){
   button("Display names","Display names"){DisplayPreferences.show(this)}
   button("☷","History"){historyOnly=true;WatchLink.history();render()};scroll.post{scroll.scrollTo(0,position)}
  }
- private fun toggleVibrationSignal(){
-  if(WatchCache.state.optBoolean("watchVibration")){WatchLink.set(JSONObject().put("watchVibration",false));return}
-  if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED){requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),44);return}
-  if(!getSystemService(android.app.NotificationManager::class.java).areNotificationsEnabled()){
-   Toast.makeText(this,"Enable TangoWiz notifications for vibration signals",Toast.LENGTH_LONG).show()
-   startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,packageName));return
-  }
-  WatchLink.set(JSONObject().put("watchVibration",true))
- }
+ private fun toggleVibrationSignal(){WatchLink.set(JSONObject().put("watchVibration",!WatchCache.state.optBoolean("watchVibration")))}
  private fun refreshCapture(){WatchLink.refresh{ok->runOnUiThread{fresh=ok;if(ok&&(!WatchCache.state.optBoolean("listening")||WatchCache.state.optString("microphone")!="watch")){WatchCache.pendingCapture=false;if(!WatchCache.pending.isNotEmpty())wantCapture=false};maybeCapture()}}}
  private fun maybeCapture(){if(!visible||!fresh||!wantCapture||captureRequested)return;val s=WatchCache.state;if(!s.optBoolean("listening")||s.optString("microphone")!="watch")return
   if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){captureRequested=true;requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO),42);return};if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED){captureRequested=true;requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),43);return};captureRequested=true;getSystemService(android.app.NotificationManager::class.java).cancel(11);try{startForegroundService(Intent(this,WatchMicService::class.java));if(DisplaySession.enabled(this)&&intent.getBooleanExtra("requestCapture",false)){intent.removeExtra("requestCapture");startActivity(Intent(this,AmbientDisplayActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))}}catch(e:Exception){WatchCache.error=e.message?:"Cannot start microphone";WatchCache.changed()}
  }
- override fun onRequestPermissionsResult(requestCode:Int,permissions:Array<out String>,grantResults:IntArray){super.onRequestPermissionsResult(requestCode,permissions,grantResults);if(requestCode==44){if(grantResults.firstOrNull()==PackageManager.PERMISSION_GRANTED)toggleVibrationSignal() else Toast.makeText(this,"Notifications are needed for vibration signals",Toast.LENGTH_LONG).show();return};captureRequested=false;if(grantResults.firstOrNull()==PackageManager.PERMISSION_GRANTED)maybeCapture()else{wantCapture=false;WatchCache.error="Microphone/notification permission is required";WatchCache.changed();WatchLink.status(false,WatchCache.error)}}
+ override fun onRequestPermissionsResult(requestCode:Int,permissions:Array<out String>,grantResults:IntArray){super.onRequestPermissionsResult(requestCode,permissions,grantResults);captureRequested=false;if(grantResults.firstOrNull()==PackageManager.PERMISSION_GRANTED)maybeCapture()else{wantCapture=false;WatchCache.error="Microphone/notification permission is required";WatchCache.changed();WatchLink.status(false,WatchCache.error)}}
 }

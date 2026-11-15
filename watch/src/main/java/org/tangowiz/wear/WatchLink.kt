@@ -21,7 +21,7 @@ import java.util.UUID
 import java.util.concurrent.*
 import java.util.concurrent.CopyOnWriteArrayList
 
-class WatchApp:Application(){override fun onCreate(){super.onCreate();WatchCache.init(this)}}
+class WatchApp:Application(){override fun onCreate(){super.onCreate();registerActivityLifecycleCallbacks(WatchHapticSession);WatchCache.init(this);org.tangowiz.link.VibrationPattern.clearLegacyNotifications(this)}}
 object WatchCache {
  lateinit var context:Context;private set
  @Volatile var state=JSONObject();private set

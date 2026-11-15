@@ -12,7 +12,7 @@ object VibrationValidation {
  fun run(i:Instrumentation){
   val ctx=i.targetContext;val store=Store(ctx);PhoneWatch.init(ctx)
   val phone=store.phoneVibration;val watch=store.watchVibration
-  val report=JSONObject();var failure:Throwable?=null
+  val report=JSONObject();var failure:Throwable?=null;var activity:android.app.Activity?=null
   fun set(p:Boolean,w:Boolean){
    val id=UUID.randomUUID().toString()
    val request=JSONObject().put("protocol",1).put("kind","set").put("requestId",id)
@@ -30,9 +30,10 @@ object VibrationValidation {
   }
   try{
    check(!LiveState.current.listening)
+   activity=i.startActivitySync(android.content.Intent(ctx,MainActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));i.waitForIdleSync()
    for(p in listOf(false,true))for(w in listOf(false,true))set(p,w)
-   check(VibrationPattern.timings(1).contentEquals(longArrayOf(0,180)))
-   check(VibrationPattern.timings(2).contentEquals(longArrayOf(0,180,140,180)))
+   check(VibrationPattern.timings(1).contentEquals(longArrayOf(0,12)))
+   check(VibrationPattern.timings(2).contentEquals(longArrayOf(0,12,100,12)))
    val policy=VibrationSignalPolicy();val end=SongEndPredictor()
    for(t in listOf(80.0,85.0,90.0))end.observe(t,"song",.8,150-(100-t)/1.03-29.5,150.0,60,1.03)
    check(policy.observe(80.0,"song",80,true,null)==VibrationSignalPolicy.Signal.NONE)
@@ -47,11 +48,14 @@ object VibrationValidation {
    Thread.sleep(1500)
    check(policy.observe(92.5,"song",80,true,end.prediction())==VibrationSignalPolicy.Signal.NONE)
    check(end.takeReset(100.0)!=null)
+   check(ctx.getSystemService(android.app.NotificationManager::class.java).activeNotifications.none{it.id in 301..302})
+   report.put("notification_absent",true)
    report.put("status","passed").put("independent_setting_combinations",4)
     .put("production_android_output_called",true).put("speed_adjusted_eight_second_policy",true)
     .put("repeated_match_suppressed",true).put("physical_vibration_feel_tested",false)
   }catch(t:Throwable){failure=t;report.put("status","failed").put("error",t.stackTraceToString())}
   finally{
+   activity?.let{a->i.runOnMainSync{a.finish()}}
    store.phoneVibration=phone;store.watchVibration=watch;LiveState.publish(RecognitionState())
    File(ctx.filesDir,"vibration-validation.json").writeText(report.toString(2))
    i.finish(if(failure==null)0 else 1,Bundle().apply{putString("vibration",report.toString())})

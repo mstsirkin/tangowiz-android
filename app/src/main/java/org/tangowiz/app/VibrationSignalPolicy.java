@@ -5,11 +5,11 @@ public final class VibrationSignalPolicy {
     public enum Signal { NONE, IDENTIFIED, ENDING }
     private String candidate = "", identified = "";
     private double since = Double.NaN, last = Double.NEGATIVE_INFINITY;
-    private boolean ending;
+    private boolean ending, endingArmed;
 
     public void clear() {
         candidate = identified = ""; since = Double.NaN;
-        last = Double.NEGATIVE_INFINITY; ending = false;
+        last = Double.NEGATIVE_INFINITY; ending = endingArmed = false;
     }
 
     public Signal observe(double now, String identity, int confidence, boolean unambiguous,
@@ -23,21 +23,25 @@ public final class VibrationSignalPolicy {
         if (!Double.isFinite(now)) return Signal.NONE;
         if (now < last) clear();
         last = now;
-        if (identity == null || identity.isEmpty() || confidence < 70 || !unambiguous) {
-            candidate = ""; since = Double.NaN; return Signal.NONE;
-        }
-        if (!identity.equals(candidate)) { candidate = identity; since = now; }
-        // A short stable run avoids buzzing for a single transient high score.
-        if (now - since < 2) return Signal.NONE;
-        if (!identity.equals(identified)) {
-            identified = identity; ending = false; return Signal.IDENTIFIED;
-        }
-        if (!ending && prediction != null && identity.equals(prediction.identity)
+        boolean confident = identity != null && !identity.isEmpty() && confidence >= 70 && unambiguous;
+        boolean rival = confident && !identified.isEmpty() && !identity.equals(identified);
+        if (rival) endingArmed = false;
+        // A recently confirmed recording can end during a short confidence dip.
+        // Warn on crossing its deadline, not only inside a single half-second match window.
+        if (!rival && !ending && prediction != null && prediction.identity.equals(identified)
                 && now >= prediction.lastConfirmedSeconds
                 && now - prediction.lastConfirmedSeconds <= 15) {
             double remaining = prediction.endSeconds - now;
-            // Do not deliver a late catch-up warning if recognition only settles at the ending.
-            if (remaining > 7 && remaining <= 8) { ending = true; return Signal.ENDING; }
+            if (remaining > 8) endingArmed = true;
+            if (remaining <= 8 && (remaining > 7 || (endingArmed && remaining >= 6))) {
+                ending = true; return Signal.ENDING;
+            }
+        }
+        if (!confident) { candidate = ""; since = Double.NaN; return Signal.NONE; }
+        if (!identity.equals(candidate)) { candidate = identity; since = now; }
+        if (now - since < 2) return Signal.NONE;
+        if (!identity.equals(identified)) {
+            identified = identity; ending = endingArmed = false; return Signal.IDENTIFIED;
         }
         return Signal.NONE;
     }

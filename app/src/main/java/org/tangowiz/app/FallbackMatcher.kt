@@ -44,6 +44,7 @@ class FallbackMatcher(private val bundle:BundleSnapshot,private val record:(Floa
      record((sourceOffset+offset/8000).toFloat(),speed.toFloat(),fp)
      result=JSONObject(NativeEngine.search(handle,fp,1,speed.toFloat(),(sourceOffset+offset/8000).toFloat()));frame++
     }
+    result?.put("queryOffsetSeconds",sourceOffset+(frame-1)*.5*speed)
     trials.add(Trial(index,result,result?.optJSONArray("candidates")?.optJSONObject(0)?.optDouble("score")?:-1.0))
    }
    return Batch(trials,(android.os.SystemClock.elapsedRealtimeNanos()-began)/1e6)

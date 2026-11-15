@@ -49,6 +49,18 @@ public class VibrationSignalPolicyTest {
         assertEquals(IDENTIFIED,p.observe(83,"song",90,true,null,true));
         assertEquals(NONE,p.observe(84,"song",90,true,null,true));
     }
+    @Test public void aBriefConfidenceDipAtTheDeadlineDoesNotLoseAnArmedEnding() {
+        VibrationSignalPolicy p=new VibrationSignalPolicy();
+        p.observe(80,"song",90,true,null);p.observe(82,"song",90,true,null);
+        assertEquals(NONE,p.observe(91.5,"song",90,true,predictor(1).prediction()));
+        assertEquals(ENDING,p.observe(92,"song",60,false,predictor(1).prediction()));
+    }
+    @Test public void aSkippedWindowCanCrossTheDeadlineWithoutLosingTheWarning() {
+        VibrationSignalPolicy p=new VibrationSignalPolicy();
+        p.observe(80,"song",90,true,null);p.observe(82,"song",90,true,null);
+        assertEquals(NONE,p.observe(91.5,"song",90,true,predictor(1).prediction()));
+        assertEquals(ENDING,p.observe(93.1,"song",90,true,predictor(1).prediction()));
+    }
     @Test public void clearAllowsSameRecordingAgain() {
         VibrationSignalPolicy p = new VibrationSignalPolicy();
         p.observe(1,"song",90,true,null);

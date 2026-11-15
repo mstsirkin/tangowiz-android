@@ -1,0 +1,76 @@
+{
+  "status": "passed",
+  "real_audio_endings": [
+    {
+      "case": "original",
+      "ending_signals": [
+        {
+          "time": "2026-11-15T09:01:30.608824Z",
+          "signal": "ENDING",
+          "audio_seconds": 79.5,
+          "predicted_end": 87.0499999999999,
+          "timely": true,
+          "phone_enabled": true,
+          "watch_enabled": false
+        }
+      ],
+      "identified_signals": [
+        {
+          "time": "2026-11-15T09:00:31.689538Z",
+          "signal": "IDENTIFIED",
+          "audio_seconds": 20.5,
+          "predicted_end": null,
+          "timely": true,
+          "phone_enabled": true,
+          "watch_enabled": false
+        }
+      ],
+      "adaptive_completed": 5,
+      "adaptive_accepted": 1,
+      "adaptive_worker_errors": 0
+    },
+    {
+      "case": "normal",
+      "ending_signals": [
+        {
+          "time": "2026-11-15T09:03:26.520565Z",
+          "signal": "ENDING",
+          "audio_seconds": 84.5,
+          "predicted_end": 92.5,
+          "timely": true,
+          "phone_enabled": true,
+          "watch_enabled": false
+        }
+      ],
+      "identified_signals": [
+        {
+          "time": "2026-11-15T09:02:08.515482Z",
+          "signal": "IDENTIFIED",
+          "audio_seconds": 6.5,
+          "predicted_end": null,
+          "timely": true,
+          "phone_enabled": true,
+          "watch_enabled": false
+        }
+      ],
+      "adaptive_completed": 2,
+      "adaptive_accepted": 0,
+      "adaptive_worker_errors": 0
+    }
+  ],
+  "watch": {
+    "stage": "waiting_for_home",
+    "status": "passed",
+    "real_os_ambient": true,
+    "awake_single_and_ambient_double": true,
+    "notification_absent": true,
+    "ambient_not_woken": true,
+    "watch_face_suppressed": true
+  },
+  "tests": 99,
+  "failures": 0,
+  "physical_haptic_feel_tested": false,
+  "paired_transport_tested": false,
+  "behavior_regressions_failed_before_fix": 6,
+  "behavior_regressions_passed_unchanged_after_fix": true
+}

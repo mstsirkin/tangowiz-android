@@ -8,6 +8,10 @@ public final class SongEndPredictor {
     private static final double SAMPLE_SECONDS = 5;
     private static final double MAX_LOOKAHEAD_SECONDS = 90;
     private static final double MAX_CONFIRMATION_AGE_SECONDS = 15;
+    private final int minimumFrames;
+    private final double minimumScore;
+    public SongEndPredictor(){this(60,MIN_SCORE);}
+    SongEndPredictor(int frames,double score){minimumFrames=frames;minimumScore=score;}
     private final ArrayDeque<Observation> evidence = new ArrayDeque<>();
     private Prediction pending;
     private double lastSample = Double.NEGATIVE_INFINITY;
@@ -44,8 +48,8 @@ public final class SongEndPredictor {
         if (!Double.isFinite(queryOffset)) return;
         if (queryOffset < lastOffset) clear();
         lastOffset = queryOffset;
-        if (identity == null || identity.isEmpty() || !Double.isFinite(score) || score < MIN_SCORE
-                || frames < 60 || !Double.isFinite(speed) || speed < .5 || speed > 2) return;
+        if (identity == null || identity.isEmpty() || !Double.isFinite(score) || score < minimumScore
+                || frames < minimumFrames || !Double.isFinite(speed) || speed < .5 || speed > 2) return;
         // A confident rival invalidates an armed ending immediately, even between samples.
         if (pending != null && !pending.identity.equals(identity)) {
             pending = null; evidence.clear(); lastSample = Double.NEGATIVE_INFINITY;

@@ -188,6 +188,7 @@ class RecognitionService:Service(){
    val signalGeneration=java.util.concurrent.atomic.AtomicLong(0)
    val songEnd=SongEndPredictor()
    val vibration=VibrationSignalPolicy()
+   val warningEnd=EndWarningPredictor()
    val adaptive=if(store.adaptiveRecognition)AdaptiveRecognizer(bundle!!,store.adaptiveInterval){row->io.execute{store.append(File(dir,"adaptive.jsonl"),row)}} else null;adaptiveWorker=adaptive
    var fallbackEarliestSample=0L
    val fp=DataOutputStream(BufferedOutputStream(File(dir,"fingerprints.bin").outputStream()));fingerprintLog=fp
@@ -213,13 +214,13 @@ class RecognitionService:Service(){
      val queryOffset=(sourceStart/8000.0).toFloat()
      val rms=SignalGate.rms(pcm)
      if(rms<SignalGate.MIN_RMS){
-      if(hadSignal){NativeEngine.reset(native);signalGeneration.incrementAndGet()};songEnd.clear();fallbackEarliestSample=sourceStart.toLong();hadSignal=false;audibleWindow=false;result=null;fallbackResult.set(null)
+      if(hadSignal){NativeEngine.reset(native);signalGeneration.incrementAndGet()};songEnd.clear();warningEnd.clear();fallbackEarliestSample=sourceStart.toLong();hadSignal=false;audibleWindow=false;result=null;fallbackResult.set(null)
       if(store.timing)io.execute{store.append(timings,JSONObject().put("stage","silence_gate").put("query_offset",queryOffset).put("rms",rms).put("threshold",SignalGate.MIN_RMS))}
       continue
      }
      val boundary=songEnd.takeReset(queryOffset.toDouble())
      if(boundary!=null){
-      vibration.clear()
+      vibration.clear();warningEnd.clear()
       NativeEngine.reset(native);signalGeneration.incrementAndGet();fallbackResult.set(null)
       fallbackEarliestSample=sourceStart.toLong();lastLogged=null;logSecond=-60.0
       val transition=JSONObject().put("query_offset",queryOffset).put("predicted_end",boundary.endSeconds).put("group_id",boundary.identity).put("score",boundary.score).put("observations",boundary.observations).put("support_span_seconds",boundary.spanSeconds).put("last_confirmation_age_seconds",queryOffset-boundary.lastConfirmedSeconds)
@@ -246,7 +247,7 @@ class RecognitionService:Service(){
      result=adaptive.update(pcmHistory,pcmSize,baseSample,samples,queryOffset,result,native,signalGeneration.get(),fallbackEarliestSample,audibleWindow)
      if(result?.optBoolean("normalRecovery")==true){
       // Rebased context belongs to a new hypothesis; old worker results and end predictions cannot survive it.
-      signalGeneration.incrementAndGet();fallbackResult.set(null);songEnd.clear()
+      signalGeneration.incrementAndGet();fallbackResult.set(null);songEnd.clear();warningEnd.clear()
       fallbackEarliestSample=maxOf(fallbackEarliestSample,((queryOffset-(RecentNormalRecovery.RECENT_FRAMES-1)*.5)*8000).toLong())
       lastLogged=null;logSecond=-60.0
      }
@@ -275,11 +276,18 @@ class RecognitionService:Service(){
     val acoustic=OrchestraPresentation.candidates(selectedResult).sortedByDescending{it.score}
     val acousticBest=acoustic.firstOrNull()
     val runnerScore=Candidate.distinctRunner(acousticBest,acoustic)?.score?:0.0
-    val signal=vibration.observe(offset+1,if(settled&&audibleWindow)acousticBest?.groupId else null,acousticBest?.let{ConfidenceCalibration.percent(bundle,it.score)}?:0,acousticBest!=null&&acousticBest.score-runnerScore>=.08,songEnd.prediction(),queue.size<=2&&active(token))
+    val warningConfidence=acousticBest?.let{ConfidenceCalibration.percent(bundle,it.score)}?:0
+    val warningUnambiguous=acousticBest!=null&&acousticBest.score-runnerScore>=.08
+    val warningCandidate=acousticBest?.rawJson?.let{JSONObject(it)}
+    if(settled&&audibleWindow&&warningCandidate!=null){
+     val query=selectedResult?.optDouble("queryOffsetSeconds",(nextFrame[6]-1)*.5)?:((nextFrame[6]-1)*.5)
+     warningEnd.observe(query,acousticBest!!.groupId,acousticBest.score,warningConfidence,warningUnambiguous,warningCandidate.optDouble("referenceSeconds"),warningCandidate.optDouble("referenceEndSeconds"),selectedResult?.optInt("frames")?:0,acousticBest.speed)
+    }
+    val signal=vibration.observe(offset+1,if(settled&&audibleWindow)acousticBest?.groupId else null,acousticBest?.let{ConfidenceCalibration.percent(bundle,it.score)}?:0,acousticBest!=null&&acousticBest.score-runnerScore>=.08,warningEnd.prediction(),queue.size<=2&&active(token))
     // Audio backlog would make a timely warning arrive late in the room.
     if(signal!=VibrationSignalPolicy.Signal.NONE){
      val timely=queue.size<=2&&active(token)
-     val receipt=JSONObject().put("time",Instant.now().toString()).put("signal",signal.name).put("audio_seconds",offset+1).put("timely",timely).put("phone_enabled",store.phoneVibration).put("watch_enabled",store.watchVibration)
+     val receipt=JSONObject().put("time",Instant.now().toString()).put("signal",signal.name).put("audio_seconds",offset+1).put("predicted_end",warningEnd.prediction()?.endSeconds?:JSONObject.NULL).put("timely",timely).put("phone_enabled",store.phoneVibration).put("watch_enabled",store.watchVibration)
      io.execute{store.append(File(dir,"vibration-signals.jsonl"),receipt)}
      if(timely)PhoneWatch.vibrationSignal(signal)
     }
