@@ -1,0 +1,28 @@
+{
+  "status": "passed",
+  "actual_signed_release_apks_tested": true,
+  "actual_paired_data_layer": true,
+  "real_audio_ending_in_watch_ambient": true,
+  "watch_tick_low_scale": 0.1,
+  "notification_absent": true,
+  "ambient_not_woken": true,
+  "watch_face_suppression_tested_separately": true,
+  "ending_audio_seconds": 79,
+  "tests": 99,
+  "failures": 0,
+  "adaptive_completed": 6,
+  "adaptive_accepted": 1,
+  "adaptive_worker_errors": 0,
+  "native_run_id": "android-release-recovery-20261115T040923-36290f",
+  "native_windows": 5823,
+  "solo_tango_field_cases": 9,
+  "apk_sha256": {
+    "TangoWiz-0.5.24.apk": "3238cb89e2b3ab271312cd8c5e7096f1d038e56ccd63a97354640ff656b2dde2",
+    "TangoWiz-Watch-0.5.22.apk": "3f008034aed93e878e802e66297caa8cbe25cff28b46b713ef97eefdf544f0ab"
+  },
+  "physical_haptic_feel_tested": false,
+  "ending_remaining_seconds": 7.929999999999907,
+  "build_commit": "70e3836",
+  "only_latest_replay_session_counted": true,
+  "native_source_signature": "6df4541558ce5dc8713e6932a77affa94a41ff32bf5a330d482012e3a4ff9a9b"
+}
