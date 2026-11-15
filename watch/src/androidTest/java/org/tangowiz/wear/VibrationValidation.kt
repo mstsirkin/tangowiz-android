@@ -11,10 +11,12 @@ object VibrationValidation {
   i.runOnMainSync{WatchCache.init(i.targetContext)};i.waitForIdleSync()
   val original=JSONObject(WatchCache.state.toString())
   var revision=original.optLong("revision")+1000;val report=JSONObject();var failure:Throwable?=null;var activity:android.app.Activity?=null
-  fun state(enabled:Boolean,listening:Boolean=true){WatchCache.accept(JSONObject().put("revision",++revision).put("updatedAt",System.currentTimeMillis()).put("watchVibration",enabled).put("watchEndVibration",enabled).put("phoneVibration",!enabled).put("listening",listening).put("microphone","phone"))}
+  fun state(enabled:Boolean,listening:Boolean=true,ending:Boolean=enabled){WatchCache.accept(JSONObject().put("revision",++revision).put("updatedAt",System.currentTimeMillis()).put("watchVibration",enabled).put("watchEndVibration",ending).put("phoneVibration",!enabled).put("listening",listening).put("microphone","phone"))}
   fun event(pulses:Int)=JSONObject().put("id",UUID.randomUUID().toString()).put("pulses",pulses).put("sentAt",System.currentTimeMillis())
   try{
    state(false);activity=i.startActivitySync(android.content.Intent(i.targetContext,WatchActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));i.waitForIdleSync();check(!WatchCache.state.optBoolean("watchVibration")){"Fixture state rejected: ${WatchCache.state}"};check(!WatchVibration.receive(event(1)))
+   state(true,ending=false);check(WatchVibration.receive(event(1)));check(!WatchVibration.receive(event(2)))
+   state(false,ending=true);check(!WatchVibration.receive(event(1)));check(WatchVibration.receive(event(2)))
    state(true);val single=event(1);check(WatchVibration.receive(single))
    check(!WatchVibration.receive(single));Thread.sleep(500)
    check(WatchVibration.receive(event(2)));Thread.sleep(800)
@@ -23,7 +25,7 @@ object VibrationValidation {
    state(true,false);check(!WatchVibration.receive(event(1)))
    state(false);check(!WatchVibration.receive(event(2)))
    check(i.targetContext.getSystemService(android.app.NotificationManager::class.java).activeNotifications.none{it.id in 301..302})
-   report.put("status","passed").put("independent_watch_toggle",true).put("single_and_double_android_output",true)
+   report.put("status","passed").put("independent_watch_toggle",true).put("independent_identification_and_ending",true).put("single_and_double_android_output",true)
     .put("duplicate_stale_invalid_and_paused_rejected",true).put("paired_delivery_tested",false)
   }catch(t:Throwable){failure=t;report.put("status","failed").put("error",t.stackTraceToString())}
   finally{

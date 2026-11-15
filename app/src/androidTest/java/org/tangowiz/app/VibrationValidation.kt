@@ -28,11 +28,26 @@ object VibrationValidation {
    }
    check(Store(ctx).phoneVibration==p&&Store(ctx).watchVibration==w)
    check(Store(ctx).phoneEndVibration==pe&&Store(ctx).watchEndVibration==we)
+   check(Store(ctx).phoneVibrationEnabled(1)==p&&Store(ctx).phoneVibrationEnabled(2)==pe)
+   check(Store(ctx).watchVibrationEnabled(1)==w&&Store(ctx).watchVibrationEnabled(2)==we)
    check(PhoneWatch.state().getBoolean("phoneVibration")==p&&PhoneWatch.state().getBoolean("watchVibration")==w)
    check(PhoneWatch.state().getBoolean("phoneEndVibration")==pe&&PhoneWatch.state().getBoolean("watchEndVibration")==we)
   }
   try{
    check(!LiveState.current.listening)
+   store.phoneVibration=true;store.watchVibration=true
+   store.prefs.edit().remove("phone_end_vibration").remove("watch_end_vibration").commit()
+   check(Store(ctx).phoneVibration&&Store(ctx).watchVibration)
+   check(!Store(ctx).phoneEndVibration&&!Store(ctx).watchEndVibration)
+   store.phoneVibration=false;store.watchVibration=false
+   check(!Store(ctx).phoneVibration&&!Store(ctx).watchVibration)
+   check(!Store(ctx).phoneEndVibration&&!Store(ctx).watchEndVibration)
+   check(DisplayLabelKey.equivalent("C. T. V.","ctv"))
+   check(DisplayLabelKey.equivalent("María Remedios","MARIAREMEDIOS"))
+   check(!DisplayLabelKey.equivalent("Anoche a las 4","Anoche a las cuatro"))
+   check(!DisplayLabelKey.equivalent("A-B","A B"))
+   check(MetadataLabels.resolve(Candidate("one","Orchestra","C. T. V.",metadataAlternatives=mapOf("title" to listOf("CTV"))),"title").size==1)
+   report.put("legacy_setting_migration",true).put("device_display_normalization",true)
    activity=i.startActivitySync(android.content.Intent(ctx,MainActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));i.waitForIdleSync()
    for(p in listOf(false,true))for(w in listOf(false,true))for(pe in listOf(false,true))for(we in listOf(false,true))set(p,w,pe,we)
    set(true,true,true,true)

@@ -13,8 +13,8 @@ done
 mkdir -p dist
 for module in "${modules[@]}"; do
  case "$module" in
-  app) artifact="TangoWiz-0.5.24" ;;
-  watch) artifact="TangoWiz-Watch-0.5.22" ;;
+  app) artifact="TangoWiz-0.5.25" ;;
+  watch) artifact="TangoWiz-Watch-0.5.23" ;;
   watchface) artifact="TangoWiz-Face-0.5.0" ;;
  esac
  input_apk="$module/build/outputs/apk/release/$module-release.apk"
