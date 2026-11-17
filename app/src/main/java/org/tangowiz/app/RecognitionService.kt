@@ -188,7 +188,8 @@ class RecognitionService:Service(){
    val signalGeneration=java.util.concurrent.atomic.AtomicLong(0)
    val songEnd=SongEndPredictor()
    val vibration=VibrationSignalPolicy()
-   val warningEnd=EndWarningPredictor()
+   val warningEnd=EndingConsensus()
+   val endingReferences=EndingReferenceData.load(bundle!!)
    val adaptive=if(store.adaptiveRecognition)AdaptiveRecognizer(bundle!!,store.adaptiveInterval){row->io.execute{store.append(File(dir,"adaptive.jsonl"),row)}} else null;adaptiveWorker=adaptive
    var fallbackEarliestSample=0L
    val fp=DataOutputStream(BufferedOutputStream(File(dir,"fingerprints.bin").outputStream()));fingerprintLog=fp
@@ -214,13 +215,13 @@ class RecognitionService:Service(){
      val queryOffset=(sourceStart/8000.0).toFloat()
      val rms=SignalGate.rms(pcm)
      if(rms<SignalGate.MIN_RMS){
-      if(hadSignal){NativeEngine.reset(native);signalGeneration.incrementAndGet()};songEnd.clear();warningEnd.clear();fallbackEarliestSample=sourceStart.toLong();hadSignal=false;audibleWindow=false;result=null;fallbackResult.set(null)
+      if(hadSignal){NativeEngine.reset(native);signalGeneration.incrementAndGet()};songEnd.clear();warningEnd.clearEvidence();fallbackEarliestSample=sourceStart.toLong();hadSignal=false;audibleWindow=false;result=null;fallbackResult.set(null)
       if(store.timing)io.execute{store.append(timings,JSONObject().put("stage","silence_gate").put("query_offset",queryOffset).put("rms",rms).put("threshold",SignalGate.MIN_RMS))}
       continue
      }
      val boundary=songEnd.takeReset(queryOffset.toDouble())
      if(boundary!=null){
-      vibration.clear();warningEnd.clear()
+      vibration.clear();warningEnd.clearEvidence()
       NativeEngine.reset(native);signalGeneration.incrementAndGet();fallbackResult.set(null)
       fallbackEarliestSample=sourceStart.toLong();lastLogged=null;logSecond=-60.0
       val transition=JSONObject().put("query_offset",queryOffset).put("predicted_end",boundary.endSeconds).put("group_id",boundary.identity).put("score",boundary.score).put("observations",boundary.observations).put("support_span_seconds",boundary.spanSeconds).put("last_confirmation_age_seconds",queryOffset-boundary.lastConfirmedSeconds)
@@ -247,7 +248,7 @@ class RecognitionService:Service(){
      result=adaptive.update(pcmHistory,pcmSize,baseSample,samples,queryOffset,result,native,signalGeneration.get(),fallbackEarliestSample,audibleWindow)
      if(result?.optBoolean("normalRecovery")==true){
       // Rebased context belongs to a new hypothesis; old worker results and end predictions cannot survive it.
-      signalGeneration.incrementAndGet();fallbackResult.set(null);songEnd.clear();warningEnd.clear()
+      signalGeneration.incrementAndGet();fallbackResult.set(null);songEnd.clear();warningEnd.clearEvidence()
       fallbackEarliestSample=maxOf(fallbackEarliestSample,((queryOffset-(RecentNormalRecovery.RECENT_FRAMES-1)*.5)*8000).toLong())
       lastLogged=null;logSecond=-60.0
      }
@@ -279,15 +280,23 @@ class RecognitionService:Service(){
     val warningConfidence=acousticBest?.let{ConfidenceCalibration.percent(bundle,it.score)}?:0
     val warningUnambiguous=acousticBest!=null&&acousticBest.score-runnerScore>=.08
     val warningCandidate=acousticBest?.rawJson?.let{JSONObject(it)}
-    if(settled&&audibleWindow&&warningCandidate!=null){
+    val timelyWarning=queue.size<=2&&active(token)
+    val ending=if(settled&&audibleWindow&&warningCandidate!=null){
      val query=selectedResult?.optDouble("queryOffsetSeconds",(nextFrame[6]-1)*.5)?:((nextFrame[6]-1)*.5)
-     warningEnd.observe(query,acousticBest!!.groupId,acousticBest.score,warningConfidence,warningUnambiguous,warningCandidate.optDouble("referenceSeconds"),warningCandidate.optDouble("referenceEndSeconds"),selectedResult?.optInt("frames")?:0,acousticBest.speed)
-    }
-    val signal=vibration.observe(offset+1,if(settled&&audibleWindow)acousticBest?.groupId else null,acousticBest?.let{ConfidenceCalibration.percent(bundle,it.score)}?:0,acousticBest!=null&&acousticBest.score-runnerScore>=.08,warningEnd.prediction(),queue.size<=2&&active(token))
+     val raw=selectedResult?.optJSONArray("candidates")
+     val rival=raw?.let{rows->(0 until rows.length()).mapNotNull{rows.optJSONObject(it)}.firstOrNull{it.optString("id")!=warningCandidate.optString("id")}}
+     warningEnd.observe(query,offset+1,selectedResult?.optInt("frames")?:0,timelyWarning,endingReferences.candidate(warningCandidate),rival?.let{endingReferences.candidate(it)}) {
+      // Independent seven-frame search on the matching speed stream, never the retained long window.
+      val recent=if(adaptive!=null)adaptive.recentEndingResult(native,acousticBest!!.speed) else if(EndingVerificationStream.select(acousticBest!!.speed,1.0,false)==EndingVerificationStream.Stream.NORMAL)JSONObject(NativeEngine.recentResult(native,7)) else null
+      if(recent?.optInt("frames")!=7)null else recent.optJSONArray("candidates")?.optJSONObject(0)?.let{endingReferences.candidate(it)}
+     }
+    }else null
+    val identification=vibration.observe(offset+1,if(settled&&audibleWindow)acousticBest?.groupId else null,warningConfidence,warningUnambiguous,null,timelyWarning)
+    val signal=if(ending!=null)VibrationSignalPolicy.Signal.ENDING else identification
     // Audio backlog would make a timely warning arrive late in the room.
     if(signal!=VibrationSignalPolicy.Signal.NONE){
      val timely=queue.size<=2&&active(token)
-     val receipt=JSONObject().put("time",Instant.now().toString()).put("signal",signal.name).put("audio_seconds",offset+1).put("predicted_end",warningEnd.prediction()?.endSeconds?:JSONObject.NULL).put("timely",timely).put("phone_enabled",store.phoneVibrationEnabled(if(signal==VibrationSignalPolicy.Signal.IDENTIFIED)1 else 2)).put("watch_enabled",store.watchVibrationEnabled(if(signal==VibrationSignalPolicy.Signal.IDENTIFIED)1 else 2))
+     val receipt=JSONObject().put("time",Instant.now().toString()).put("signal",signal.name).put("audio_seconds",offset+1).put("predicted_end",ending?.end?:JSONObject.NULL).put("timely",timely).put("phone_enabled",store.phoneVibrationEnabled(if(signal==VibrationSignalPolicy.Signal.IDENTIFIED)1 else 2)).put("watch_enabled",store.watchVibrationEnabled(if(signal==VibrationSignalPolicy.Signal.IDENTIFIED)1 else 2))
      io.execute{store.append(File(dir,"vibration-signals.jsonl"),receipt)}
      if(timely)PhoneWatch.vibrationSignal(signal)
     }

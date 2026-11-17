@@ -91,5 +91,11 @@ class AdaptiveRecognizer(private val bundle:BundleSnapshot, private val interval
   if(best===result&&best!=null){val copy=JSONObject(best.toString());val c=top(copy)!!;c.put("referenceSeconds",c.optDouble("referenceSeconds")+(t-(next-.5*selected))/selected);return copy}
   return best
  }
+ /** Recognition-thread only; never use normal-speed audio to veto an identified promoted stream. */
+ fun recentEndingResult(normalHandle:Long,matchedSpeed:Double):JSONObject? = when(EndingVerificationStream.select(matchedSpeed,selected,result!=null)) {
+  EndingVerificationStream.Stream.NORMAL -> JSONObject(NativeEngine.recentResult(normalHandle,7))
+  EndingVerificationStream.Stream.ADAPTIVE -> JSONObject(NativeEngine.recentResultAtSpeed(live.handle,7,selected.toFloat()))
+  EndingVerificationStream.Stream.UNAVAILABLE -> null
+ }
  override fun close(){coordinator.shutdown();check(coordinator.awaitTermination(120,java.util.concurrent.TimeUnit.SECONDS));pool.shutdown();check(pool.awaitTermination(120,java.util.concurrent.TimeUnit.SECONDS));workers.forEach{it.close()};live.close()}
 }

@@ -151,10 +151,12 @@ std::string Engine::render(const std::map<uint64_t,Ranked>&best,size_t frameCoun
  }
  out<<"],\"rawCandidates\":[";for(size_t i=0;i<std::min<size_t>(20,hits.size());i++){if(i)out<<',';auto&h=hits[i];out<<"{\"id\":"<<quote(text(metadataRow(h.track)[0]))<<",\"score\":"<<h.score<<",\"speed\":"<<h.speed<<",\"referenceSeconds\":"<<(h.start-bounds[h.track])*.5<<'}';}timespec cpuEnd{};clock_gettime(CLOCK_THREAD_CPUTIME_ID,&cpuEnd);out<<"],\"groupingMs\":"<<std::chrono::duration<double,std::milli>(groupingEnd-groupingBegin).count()<<",\"lookupMs\":"<<lookupMs<<",\"cpuMs\":"<<((cpuEnd.tv_sec-cpuBegin.tv_sec)*1000.+(cpuEnd.tv_nsec-cpuBegin.tv_nsec)/1e6)<<",\"elapsedMs\":"<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-began).count()<<",\"frames\":"<<frameCount<<'}';return out.str();
 }
-std::string Engine::recentResult(int count) {
+std::string Engine::recentResult(int count) {return recentResultAtSpeed(count,1.f);}
+std::string Engine::recentResultAtSpeed(int count,float speed) {
+ if(!std::isfinite(speed)||speed<.5||speed>2)throw std::runtime_error("Invalid recent window speed");
  if(count<1||count>60)throw std::runtime_error("Invalid recent window count");
  timespec cpuBegin{};clock_gettime(CLOCK_THREAD_CPUTIME_ID,&cpuBegin);auto began=std::chrono::steady_clock::now();
- auto stream=streams.find(10000);std::map<uint64_t,Ranked> best;
+ auto stream=streams.find(std::lround(speed*10000));std::map<uint64_t,Ranked> best;
  if(stream==streams.end()||stream->second.size()<size_t(count))return render(best,0,began,0,cpuBegin);
  const auto&frames=stream->second;const size_t first=frames.size()-count;std::set<int64_t> starts;
  for(int j=0;j<count;j++)for(auto id:frames[first+j].neighbors)if(id>=j&&id-j+count<=int64_t(ntotal))starts.insert(id-j);
@@ -163,7 +165,7 @@ std::string Engine::recentResult(int count) {
   if(track>=nrefs||start+count>bounds[track+1])continue;
   float sum=0;for(int j=0;j<count;j++)sum+=similarity(frames[first+j].vector.data(),start+j);
   float score=sum/count;auto found=best.find(track);
-  if(found==best.end()||score>found->second.score)best[track]={score,track,uint64_t(start),1.f};
+  if(found==best.end()||score>found->second.score)best[track]={score,track,uint64_t(start),speed};
  }
  return render(best,count,began,0,cpuBegin);
 }

@@ -1,0 +1,37 @@
+{
+  "status": "passed",
+  "actual_signed_release_apks_tested": true,
+  "actual_paired_data_layer": true,
+  "real_audio_ending_in_watch_ambient": true,
+  "watch_tick_low_scale": 0.1,
+  "notification_absent": true,
+  "ambient_not_woken": true,
+  "watch_visibility_gate_unchanged": true,
+  "independent_controls_emulator_tested": true,
+  "legacy_settings_migration_emulator_tested": true,
+  "display_normalization_emulator_tested": true,
+  "ending_audio_seconds": 79.5,
+  "tests": 157,
+  "failures": 0,
+  "adaptive_completed": 5,
+  "adaptive_accepted": 1,
+  "adaptive_worker_errors": 0,
+  "native_run_id": "android-release-recovery-20261117T111214-f81d45",
+  "native_windows": 5823,
+  "solo_tango_field_cases": 9,
+  "apk_sha256": {
+    "TangoWiz-0.5.26.apk": "cdc46f7220ed9c7afcf5f4a1ceb1ddb3bcd95c062f406b0b46cf830002642df5",
+    "TangoWiz-Watch-0.5.23.apk": "956fc2da4a28342270a054809369587a7400fad9a61aee02c10c2ffe7075705a"
+  },
+  "physical_haptic_feel_tested": false,
+  "isolated_tested_source_verified": true,
+  "ending_policy_parity": {
+    "passed": true,
+    "rows": 18267,
+    "events": 45,
+    "scope": "Same frozen v8 inputs and offline source bindings, Android Java versus native C++ policy decisions; not full Android scheduling or hardware timing",
+    "source_sha256": "f807ef8b22de5ff7d2445272a2b925f28435a956c62e087e7a6fcf660a183001"
+  },
+  "synthetic_policy_parity_cases": 17,
+  "native_source_signature": "fed6323bebcf46b1999fb4aa5727ad71c9f9f7c87013c4201372e65ea6622cbc"
+}

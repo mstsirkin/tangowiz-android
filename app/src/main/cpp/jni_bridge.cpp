@@ -72,6 +72,14 @@ extern "C" JNIEXPORT jstring JNICALL Java_org_tangowiz_app_NativeEngine_recentRe
  auto text=(jstring)e->NewObject(cls,ctor,bytes,encoding);e->DeleteLocalRef(bytes);e->DeleteLocalRef(encoding);return text;
 }catch(const std::exception&x){fail(e,x.what());return nullptr;}}
 
+extern "C" JNIEXPORT jstring JNICALL Java_org_tangowiz_app_NativeEngine_recentResultAtSpeed(JNIEnv*e,jobject,jlong handle,jint count,jfloat speed){try{
+ if(!handle)throw std::runtime_error("Invalid engine handle");
+ std::string result=((Handle*)handle)->engine->recentResultAtSpeed(count,speed);
+ auto bytes=e->NewByteArray(result.size());e->SetByteArrayRegion(bytes,0,result.size(),reinterpret_cast<const jbyte*>(result.data()));
+ auto cls=e->FindClass("java/lang/String");auto ctor=e->GetMethodID(cls,"<init>","([BLjava/lang/String;)V");auto encoding=e->NewStringUTF("UTF-8");
+ auto text=(jstring)e->NewObject(cls,ctor,bytes,encoding);e->DeleteLocalRef(bytes);e->DeleteLocalRef(encoding);return text;
+}catch(const std::exception&x){fail(e,x.what());return nullptr;}}
+
 extern "C" JNIEXPORT void JNICALL Java_org_tangowiz_app_NativeEngine_retainRecent(JNIEnv*e,jobject,jlong handle,jint count){try{
  if(!handle)throw std::runtime_error("Invalid engine handle");((Handle*)handle)->engine->retainRecent(count);
 }catch(const std::exception&x){fail(e,x.what());}}

@@ -68,6 +68,20 @@ object VibrationValidation {
    check(policy.observe(92.5,"song",80,true,end.prediction())==VibrationSignalPolicy.Signal.NONE)
    check(end.takeReset(100.0)!=null)
    check(ctx.getSystemService(android.app.NotificationManager::class.java).activeNotifications.none{it.id in 301..302})
+   val consensus=EndingConsensus()
+   var warning:EndingConsensus.Warning?=null
+   for(t in 70..92){
+    val c=EndingConsensus.Candidate("song","source",.55,200-(100-t)-14.5,200.0,1.0)
+    warning=consensus.observe(t.toDouble(),t.toDouble(),30,true,c,null){EndingConsensus.Candidate("song","recent",.6,0.0,1.0,1.0)}
+   }
+   check(warning?.end==100.0)
+   val endpointJson=JSONObject().put("version",1).put("catalog_sha256","fixture")
+    .put("recordings",JSONObject().put("source",JSONObject().put("musical_end_seconds",180).put("indexed_end_seconds",195).put("audio_sha256","a".repeat(64))))
+   val endpointBytes=endpointJson.toString().toByteArray()
+   check(EndingReferenceData.decode(endpointBytes,"fixture").end("source",195.0)==180.0)
+   check(EndingReferenceData.decode(endpointBytes,"fixture").end("other",195.0)==195.0)
+   check(runCatching{EndingReferenceData.decode(endpointBytes,"wrong")}.isFailure)
+   report.put("consensus_and_catalog_bound_endpoint",true)
    report.put("notification_absent",true)
    report.put("status","passed").put("independent_setting_combinations",16)
     .put("production_android_output_called",true).put("speed_adjusted_eight_second_policy",true)
