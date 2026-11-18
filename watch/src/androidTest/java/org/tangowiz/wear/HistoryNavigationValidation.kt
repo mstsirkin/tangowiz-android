@@ -49,18 +49,18 @@ object HistoryNavigationValidation {
    child=openBySwipe(parent!!)
    ui{views(child!!.window.decorView).filterIsInstance<TextView>().first{it.text.toString().contains("Previous song")}.performClick()};i.waitForIdleSync()
    await("details dialog"){!child!!.hasWindowFocus()}
-   swipe(child!!,true);await("details returns to history"){child!!.hasWindowFocus()};check(!child!!.isFinishing)
+   await("details dialog owns focus"){!child!!.hasWindowFocus()};swipe(child!!,true);await("details returns to history"){child!!.hasWindowFocus()};check(!child!!.isFinishing)
    report.put("details_swipe_returns_to_history",true)
    swipe(child!!,true);await("history swipe returns to controls"){parent!!.hasWindowFocus()};check(!parent!!.isFinishing);child=null
    report.put("controls_left_swipe_opens_history_right_swipe_returns",true)
    for(kind in listOf("display","interval","confidence")){
     ui{dialog=when(kind){"display"->DisplayPreferences.show(parent!!);"interval"->WatchUpdatePreferences.showInterval(parent!!){};else->WatchUpdatePreferences.showConfidence(parent!!){} }}
-    i.waitForIdleSync();ui{val d=dialog!!;val b=if(kind=="display")d.getButton(AlertDialog.BUTTON_POSITIVE) else d.getButton(AlertDialog.BUTTON_NEGATIVE);check(b.text.toString()=="Close");val bounds=Rect();check(b.getGlobalVisibleRect(bounds));check(bounds.top>=0&&bounds.bottom<=parent!!.resources.displayMetrics.heightPixels){"Settings Close falls outside the watch display"};b.performClick()};await("settings close $kind"){parent!!.hasWindowFocus()}
+    await("settings dialog focused $kind"){dialog!!.window!!.decorView.hasWindowFocus()};i.waitForIdleSync();ui{val d=dialog!!;val b=if(kind=="display")d.getButton(AlertDialog.BUTTON_POSITIVE) else d.getButton(AlertDialog.BUTTON_NEGATIVE);check(b.text.toString()=="Close");val bounds=Rect();check(b.getGlobalVisibleRect(bounds));check(bounds.top>=0&&bounds.bottom<=parent!!.resources.displayMetrics.heightPixels){"Settings Close falls outside the watch display"};b.performClick()};await("settings close $kind"){parent!!.hasWindowFocus()}
    }
    report.put("all_settings_dialogs_have_visible_close",true)
    for(kind in listOf("display","interval","confidence")){
     ui{dialog=when(kind){"display"->DisplayPreferences.show(parent!!);"interval"->WatchUpdatePreferences.showInterval(parent!!){};else->WatchUpdatePreferences.showConfidence(parent!!){} }}
-    i.waitForIdleSync();swipe(parent!!,true);await("settings swipe $kind"){parent!!.hasWindowFocus()}
+    await("settings swipe dialog focused $kind"){dialog!!.window!!.decorView.hasWindowFocus()};i.waitForIdleSync();swipe(parent!!,true);await("settings swipe $kind"){parent!!.hasWindowFocus()}
    }
    report.put("settings_swipes_return_to_controls",true)
    parent!!.let{a->ui{a.finish()}};i.waitForIdleSync()
