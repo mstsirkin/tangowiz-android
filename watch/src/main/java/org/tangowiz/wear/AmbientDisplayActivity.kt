@@ -58,7 +58,8 @@ class AmbientDisplayActivity:ComponentActivity(){
   footer=LinearLayout(this).apply{gravity=Gravity.CENTER}
   percent=label(14f);footer.addView(percent,LinearLayout.LayoutParams(0,-1,1f))
   footer.addView(Button(this).apply{text="⚙";textSize=22f;contentDescription="Recognition controls";setTextColor(Color.LTGRAY);setBackgroundColor(Color.TRANSPARENT);setOnClickListener{startActivity(Intent(this@AmbientDisplayActivity,WatchActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))}},LinearLayout.LayoutParams(dp(44),dp(40)))
-  content.addView(footer,LinearLayout.LayoutParams(-1,dp(40)));listOf(content,clock,song,status,percent).forEach{ResultTouchControls.bind(it)};setContentView(content)
+  footer.addView(Button(this).apply{text="Close";textSize=14f;contentDescription="Close ambient display";setTextColor(Color.LTGRAY);setBackgroundColor(Color.TRANSPARENT);setOnClickListener{DisplaySession.close(this@AmbientDisplayActivity);finish()}},LinearLayout.LayoutParams(dp(64),dp(40)))
+  content.addView(footer,LinearLayout.LayoutParams(-1,dp(40)));listOf(content,clock,song,status,percent).forEach{ResultTouchControls.bind(it)};setContentView(HistorySwipeLayout(this,{!ambient}){startActivity(Intent(this,WatchHistoryActivity::class.java))}.apply{addView(content)})
   onBackPressedDispatcher.addCallback(this,object:OnBackPressedCallback(true){override fun handleOnBackPressed(){DisplaySession.close(this@AmbientDisplayActivity);finish()}})
   lifecycle.addObserver(observer)
  }

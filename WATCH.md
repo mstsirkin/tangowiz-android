@@ -69,3 +69,12 @@ The optional small table is included in the existing single resource ZIP alongsi
 The watch settings now offer a result update interval picker (2, 5, 10, 30 or 60 seconds) and an immediate-update confidence picker (Any result, 25%, 50%, 70%, 90% or 100%). Defaults remain 5 seconds and 70%. The phone persists and acknowledges both settings. The selected confidence threshold replaces the fixed 70% boundary for immediate confidence-rise pushes and new-result rendering in the full-screen ambient display. Continued confident phone results still follow the selected interval; system ambient ticks and waking the display also render the current cache.
 
 Tap the orchestra or song in either result screen to request the phone's current state, bypassing the periodic push interval. Press and hold instead to reset recognition, retaining the last two seconds. A long press is consumed and does not also trigger a refresh. Other controls and the singer-credit reveal retain their actions. Both phone and watch companion updates are needed for the new confidence setting. The separate WFF face, recognition model, catalog, matcher and score thresholds are unchanged.
+
+
+## History navigation (watch 0.5.24)
+
+Swipe right-to-left from the controls or maximized display to open history. History is a separate child screen: a left-to-right swipe or its fixed bottom **Close** button returns to the exact screen that opened it. The existing History button still works. Opening song details from history adds one level; swiping right or tapping Close returns to history, then back to its originating screen.
+
+History keeps its manual **Refresh** button and existing phone-owned snapshot behavior. Automatic history updates are not enabled. The maximized display has a bottom Close control; closing that display does not pause identification. Display-name, update-interval and confidence dialogs also have fixed bottom Close controls and standard Wear swipe dismissal. Vertical scrolling and existing result tap/hold controls retain their actions.
+
+Validation includes JVM gesture rejection/direction tests and real touch navigation on a round Wear OS emulator, covering both originating screens, nested song details, on-screen Close controls, settings dismissal and preservation of recognition state. Physical-watch timing is not inferred from emulator results. The phone remains 0.5.26; the watch face, recognition algorithm and resource-download behavior are unchanged.

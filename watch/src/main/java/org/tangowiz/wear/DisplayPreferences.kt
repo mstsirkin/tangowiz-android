@@ -20,7 +20,7 @@ object DisplayPreferences {
     when(index){0->shortOrchestra=value;1->showSinger=value;2->singerFirstName=value}
     if(index==1)dependentAdapter?.notifyDataSetChanged()
     WatchCache.changed()
-   }.setPositiveButton("Done",null).show()
+   }.setPositiveButton("Close",null).show().also{WatchDialog.enableSwipe(it)}
   val original=dialog.listView.adapter
   dependentAdapter=object:BaseAdapter(){
    override fun getCount()=original.count

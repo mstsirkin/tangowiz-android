@@ -13,13 +13,13 @@ object WatchUpdatePreferences {
   return AlertDialog.Builder(context).setTitle("Result update interval")
    .setSingleChoiceItems(intervals.map{"${it/1000} seconds"}.toTypedArray(),intervals.indexOf(current)){dialog,index->
     send(JSONObject().put("updateIntervalMs",intervals[index]));dialog.dismiss()
-   }.setNegativeButton("Cancel",null).show()
+   }.setNegativeButton("Close",null).show().also{WatchDialog.enableSwipe(it)}
  }
  fun showConfidence(context:Context,send:(JSONObject)->Unit={WatchLink.set(it)}):AlertDialog {
   val current=WatchCache.state.optInt("immediateUpdatePercent",70)
   return AlertDialog.Builder(context).setTitle("Immediate update confidence")
    .setSingleChoiceItems(thresholds.map{if(it==0)"Any result" else "$it%"}.toTypedArray(),thresholds.indexOf(current)){dialog,index->
     send(JSONObject().put("immediateUpdatePercent",thresholds[index]));dialog.dismiss()
-   }.setNegativeButton("Cancel",null).show()
+   }.setNegativeButton("Close",null).show().also{WatchDialog.enableSwipe(it)}
  }
 }
