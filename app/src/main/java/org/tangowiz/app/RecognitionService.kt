@@ -187,6 +187,7 @@ class RecognitionService:Service(){
    val fallbackResult=java.util.concurrent.atomic.AtomicReference<Triple<JSONObject,Long,Long>?>(null)
    val signalGeneration=java.util.concurrent.atomic.AtomicLong(0)
    val songEnd=SongEndPredictor()
+   val shortWindowAgreement=ShortWindowAgreement()
    val vibration=VibrationSignalPolicy()
    val warningEnd=EndingConsensus()
    val endingReferences=EndingReferenceData.load(bundle!!)
@@ -205,6 +206,7 @@ class RecognitionService:Service(){
     val offset=(samples-8000)/8000.0
     if(samples<8240)continue
     var result:JSONObject?=null;var audibleWindow=false
+    var agreementResult:JSONObject?=null
     // Each speed stream advances by half a second of adjusted audio.
     for(si in listOf(0)){if(!active(token))break;val speed=1f+si*.005f
     while(active(token)){
@@ -215,12 +217,14 @@ class RecognitionService:Service(){
      val queryOffset=(sourceStart/8000.0).toFloat()
      val rms=SignalGate.rms(pcm)
      if(rms<SignalGate.MIN_RMS){
+      shortWindowAgreement.clear();agreementResult=null
       if(hadSignal){NativeEngine.reset(native);signalGeneration.incrementAndGet()};songEnd.clear();warningEnd.clearEvidence();fallbackEarliestSample=sourceStart.toLong();hadSignal=false;audibleWindow=false;result=null;fallbackResult.set(null)
       if(store.timing)io.execute{store.append(timings,JSONObject().put("stage","silence_gate").put("query_offset",queryOffset).put("rms",rms).put("threshold",SignalGate.MIN_RMS))}
       continue
      }
      val boundary=songEnd.takeReset(queryOffset.toDouble())
      if(boundary!=null){
+      shortWindowAgreement.clear();agreementResult=null
       vibration.clear();warningEnd.clearEvidence()
       NativeEngine.reset(native);signalGeneration.incrementAndGet();fallbackResult.set(null)
       fallbackEarliestSample=sourceStart.toLong();lastLogged=null;logSecond=-60.0
@@ -236,6 +240,18 @@ class RecognitionService:Service(){
      if(!active(token))break
      t=SystemClock.elapsedRealtimeNanos();val matchCpu=android.os.Debug.threadCpuTimeNanos();val matchProcess=android.os.Process.getElapsedCpuTime();val raw=NativeEngine.search(native,embedding,1,speed,queryOffset);timing("lookup_and_aggregation",t,matchCpu,JSONObject().put("query_offset",offset).put("speed",speed),process0=matchProcess);result=JSONObject(raw)
      val matched=result!!.optJSONArray("candidates")?.optJSONObject(0)
+     agreementResult=null
+     if(!store.disableShortWindow && result!!.optInt("frames")>=RecentNormalRecovery.RECENT_FRAMES){
+      val recent=JSONObject(NativeEngine.recentResult(native,RecentNormalRecovery.RECENT_FRAMES))
+      val shortCandidate=recent.optJSONArray("candidates")?.optJSONObject(0)
+      if(shortWindowAgreement.observe(queryOffset.toDouble(),
+        matched?.optString("groupId"),shortCandidate?.optString("groupId"),
+        matched?.optDouble("score")?:Double.NaN,result!!.optInt("frames"),
+        shortCandidate?.optDouble("score")?:Double.NaN,recent.optInt("frames"))){
+       agreementResult=if(ShortWindowAgreement.strong(matched?.optDouble("score")?:Double.NaN,result!!.optInt("frames"))) result else recent
+      }
+     }else shortWindowAgreement.clear()
+
      if(adaptive==null&&matched!=null)songEnd.observe(queryOffset.toDouble(),matched.optString("groupId",matched.optString("id")),matched.optDouble("score"),matched.optDouble("referenceSeconds"),matched.optDouble("referenceEndSeconds"),result!!.optInt("frames"),matched.optDouble("speed",1.0))
     }
     }
@@ -247,6 +263,7 @@ class RecognitionService:Service(){
      val queryOffset=(nextFrame[6]-1)*.5
      result=adaptive.update(pcmHistory,pcmSize,baseSample,samples,queryOffset,result,native,signalGeneration.get(),fallbackEarliestSample,audibleWindow)
      if(result?.optBoolean("normalRecovery")==true){
+      shortWindowAgreement.clear();agreementResult=null
       // Rebased context belongs to a new hypothesis; old worker results and end predictions cannot survive it.
       signalGeneration.incrementAndGet();fallbackResult.set(null);songEnd.clear();warningEnd.clearEvidence()
       fallbackEarliestSample=maxOf(fallbackEarliestSample,((queryOffset-(RecentNormalRecovery.RECENT_FRAMES-1)*.5)*8000).toLong())
@@ -254,6 +271,11 @@ class RecognitionService:Service(){
      }
      val c=result?.optJSONArray("candidates")?.optJSONObject(0)
      if(c!=null)songEnd.observe(queryOffset,c.optString("groupId",c.optString("id")),c.optDouble("score"),c.optDouble("referenceSeconds"),c.optDouble("referenceEndSeconds"),result!!.optInt("frames"),c.optDouble("speed",1.0))
+    }
+    val primary=result?.optJSONArray("candidates")?.optJSONObject(0)
+    if(!store.disableShortWindow && agreementResult!=null &&
+      !ShortWindowAgreement.strong(primary?.optDouble("score")?:Double.NaN,result?.optInt("frames")?:0)){
+     result=agreementResult?.put("shortWindowAgreement",true)
     }
     val candidates=OrchestraPresentation.candidates(result)
     var presentationPool=candidates

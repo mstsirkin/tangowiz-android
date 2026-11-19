@@ -52,6 +52,9 @@ class Store(val context:Context) {
  var watchImmediatePercent:Int get()=prefs.getInt("watch_immediate_percent",org.tangowiz.link.WatchUpdateSettings.DEFAULT_IMMEDIATE_PERCENT).coerceIn(0,100);set(v){prefs.edit().putInt("watch_immediate_percent",v.coerceIn(0,100)).commit()}
  var watchUpdateInterval:Long get()=prefs.getLong("watch_update_interval",5000L).coerceIn(2000L,60000L);set(v){prefs.edit().putLong("watch_update_interval",v.coerceIn(2000L,60000L)).commit()}
  var dj:Boolean get()=prefs.getBoolean("dj_popularity",false);set(v){prefs.edit().putBoolean("dj_popularity",v).commit()}
+ var disableShortWindow:Boolean
+  get()=prefs.getBoolean("disable_short_window",false)
+  set(value){prefs.edit().putBoolean("disable_short_window",value).apply()}
  var earlyAnswerGate:Boolean get()=prefs.getBoolean("early_answer_gate",true);set(v){prefs.edit().putBoolean("early_answer_gate",v).commit()}
  var phoneVibration:Boolean get()=prefs.getBoolean("phone_vibration",false);set(v){prefs.edit().putBoolean("phone_vibration",v).commit()}
  var watchVibration:Boolean get()=prefs.getBoolean("watch_vibration",false);set(v){prefs.edit().putBoolean("watch_vibration",v).commit()}

@@ -133,6 +133,12 @@ class MainActivity:Activity(){
   val capture=Spinner(this).apply{contentDescription="Phone capture mode";adapter=ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,listOf("Default","Camcorder"));setSelection(if(store.phoneCaptureMode=="camcorder")1 else 0)}
   content.addView(capture)
   content.addView(caption("Phone microphone only. Both modes use 8 kHz mono audio. Saving a different mode restarts active phone listening."))
+  val disableShortWindow=CheckBox(this).apply{
+   text="Disable short window"
+   isChecked=store.disableShortWindow
+  }
+  content.addView(disableShortWindow)
+  content.addView(caption("Leave unchecked to let agreement between the short and full windows confirm a match sooner."))
   content.addView(caption("Legacy recognition speeds"))
   content.addView(caption("Adaptive searches −6% to +5% automatically. These offsets apply only to Legacy. Normal speed (0%) is always included. Enter offsets from −3% to +3%. Changes apply to the next speed search."))
   content.addView(caption("Number of speeds, including normal"))
@@ -168,7 +174,7 @@ class MainActivity:Activity(){
   dialog.setOnShowListener{
    dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener{
     val result=runCatching{RecognitionSpeeds.validate(listOf(0.0)+fields.map{it.text.toString().trim().toDoubleOrNull()?:error("Enter a percentage for every speed")})}
-    result.onSuccess{store.recognitionSpeeds=it;val mode=if(capture.selectedItemPosition==1)"camcorder" else "default";val changed=mode!=store.phoneCaptureMode;store.phoneCaptureMode=mode;dialog.dismiss();if(changed&&store.microphone=="phone"&&LiveState.current.listening)startService(Intent(this,RecognitionService::class.java).setAction(RecognitionService.RESTART))}.onFailure{Toast.makeText(this,it.message?:"Check the speed values",Toast.LENGTH_LONG).show()}
+    result.onSuccess{store.recognitionSpeeds=it;store.disableShortWindow=disableShortWindow.isChecked;val mode=if(capture.selectedItemPosition==1)"camcorder" else "default";val changed=mode!=store.phoneCaptureMode;store.phoneCaptureMode=mode;dialog.dismiss();if(changed&&store.microphone=="phone"&&LiveState.current.listening)startService(Intent(this,RecognitionService::class.java).setAction(RecognitionService.RESTART))}.onFailure{Toast.makeText(this,it.message?:"Check the speed values",Toast.LENGTH_LONG).show()}
    }
    dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener{
     fields.clear();values=RecognitionSpeeds.defaults.filter{it!=0.0}.toMutableList();count.setSelection(5);rebuild(6)
