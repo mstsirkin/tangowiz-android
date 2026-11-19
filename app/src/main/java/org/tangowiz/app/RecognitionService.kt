@@ -186,6 +186,8 @@ class RecognitionService:Service(){
    val pcmHistory=FloatArray(131072);var pcmSize=0;val nextFrame=IntArray(13);var baseSample=0L;var samples=0L;var lastLogged:Candidate?=null;var logSecond=-60.0;var lastFallback=-30.0;var hadSignal=false
    val fallbackResult=java.util.concurrent.atomic.AtomicReference<Triple<JSONObject,Long,Long>?>(null)
    val signalGeneration=java.util.concurrent.atomic.AtomicLong(0)
+   // Matcher-context resets retain indexed timing. Offline musical endpoints
+   // are used only by warning consensus; the paired saved-phone replay guards this separation.
    val songEnd=SongEndPredictor()
    val shortWindowAgreement=ShortWindowAgreement()
    val vibration=VibrationSignalPolicy()
@@ -252,7 +254,7 @@ class RecognitionService:Service(){
       }
      }else shortWindowAgreement.clear()
 
-     if(adaptive==null&&matched!=null)songEnd.observe(queryOffset.toDouble(),matched.optString("groupId",matched.optString("id")),matched.optDouble("score"),matched.optDouble("referenceSeconds"),matched.optDouble("referenceEndSeconds"),result!!.optInt("frames"),matched.optDouble("speed",1.0))
+     if(adaptive==null&&matched!=null)endingReferences.observeMatcherReset(songEnd,queryOffset.toDouble(),matched,result!!.optInt("frames"))
     }
     }
     val earliest=(nextFrame[6]*4000.0).toLong()-80064
@@ -270,7 +272,7 @@ class RecognitionService:Service(){
       lastLogged=null;logSecond=-60.0
      }
      val c=result?.optJSONArray("candidates")?.optJSONObject(0)
-     if(c!=null)songEnd.observe(queryOffset,c.optString("groupId",c.optString("id")),c.optDouble("score"),c.optDouble("referenceSeconds"),c.optDouble("referenceEndSeconds"),result!!.optInt("frames"),c.optDouble("speed",1.0))
+     if(c!=null)endingReferences.observeMatcherReset(songEnd,queryOffset,c,result!!.optInt("frames"))
     }
     val primary=result?.optJSONArray("candidates")?.optJSONObject(0)
     if(!store.disableShortWindow && agreementResult!=null &&
