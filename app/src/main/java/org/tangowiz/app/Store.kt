@@ -3,11 +3,23 @@ package org.tangowiz.app
 import android.content.Context
 import org.json.JSONObject
 import org.json.JSONArray
+import java.io.EOFException
 import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
+import java.io.RandomAccessFile
 import java.time.Instant
 import java.util.concurrent.CopyOnWriteArrayList
 
 data class RecognitionState(val listening:Boolean=false,val phase:String="",val best:Candidate?=null,val second:Candidate?=null,val seconds:Double=0.0,val error:String="",val resident:Boolean=false,val exited:Boolean=false)
+enum class SongReaction(val value:String,val symbol:String,val label:String) {
+ HEART("heart","❤️","Heart"),
+ PUZZLED("puzzled","🤔","Puzzled")
+}
+
+// The winning source can change between matches within the same recording group.
+val Candidate.reactionId:String get()=aliases.minOrNull().orEmpty()
+
 data class ExportProgress(val copiedBytes:Long,val totalBytes:Long,val filesDone:Int,val totalFiles:Int)
 object LiveState {
  @Volatile var current=RecognitionState()
@@ -19,6 +31,17 @@ class Store(val context:Context) {
  val root=File(context.filesDir,"logs").apply{mkdirs()}
  val history=File(root,"history.jsonl")
  val prefs=context.getSharedPreferences("settings",0)
+ private val reactions=context.getSharedPreferences("song_reactions",Context.MODE_PRIVATE)
+ fun reaction(id:String):SongReaction? {
+  val value=reactions.getString(id,null)
+  return SongReaction.entries.firstOrNull{it.value==value}
+ }
+ fun setReaction(id:String,reaction:SongReaction?){
+  require(id.isNotBlank())
+  val edit=reactions.edit()
+  if(reaction==null)edit.remove(id) else edit.putString(id,reaction.value)
+  edit.apply()
+ }
  var adaptiveRecognition:Boolean get()=prefs.getBoolean("adaptive_recognition",true);set(v){prefs.edit().putBoolean("adaptive_recognition",v).commit()}
  var adaptiveInterval:Double get()=prefs.getString("adaptive_interval","2.0")!!.toDouble();set(v){require(v in listOf(1.0,2.0,2.5,3.0));prefs.edit().putString("adaptive_interval",v.toString()).commit()}
  var recognitionSpeeds:List<Double>
@@ -53,8 +76,11 @@ class Store(val context:Context) {
  private fun exportFiles(progress:(ExportProgress)->Unit,cancelled:()->Boolean):File {
   fun checkCancelled(){if(cancelled()||Thread.currentThread().isInterrupted)throw java.io.InterruptedIOException("Export cancelled")}
   data class Input(val file:File,val length:Long,val wav:Boolean)
+  val reactionSnapshot=reactions.all
   val files=root.walkTopDown().onEnter{checkCancelled();!java.nio.file.Files.isSymbolicLink(it.toPath())}.filter{it.isFile&&!java.nio.file.Files.isSymbolicLink(it.toPath())}.map{file->
-   checkCancelled();var length=file.length();val wav=file.extension.equals("wav",true)&&length>=44
+   checkCancelled()
+   var length=if(file==history)synchronized(SessionFiles.lock){file.length()} else file.length()
+   val wav=file.extension.equals("wav",true)&&length>=44
    if(file.name=="fingerprints.bin")length-=length%524
    if(wav)length=44+(length-44)/2*2
    Input(file,length,wav)
@@ -75,6 +101,12 @@ class Store(val context:Context) {
       checkCancelled();zip.putNextEntry(java.util.zip.ZipEntry(input.file.relativeTo(root).invariantSeparatorsPath))
       java.io.RandomAccessFile(input.file,"r").use{src->
        var remaining=input.length
+       if(input.file==history){
+        writeExportHistory(src,input.length,zip,reactionSnapshot){bytes->
+         checkCancelled();copied+=bytes;notifyProgress()
+        }
+        remaining=0
+       }
        if(input.wav){val data=input.length-44;require(data<=0xffffffffL-36){"Recording is too large for a WAV export"};val h=java.nio.ByteBuffer.allocate(44).order(java.nio.ByteOrder.LITTLE_ENDIAN);h.put("RIFF".toByteArray()).putInt((data+36).toInt()).put("WAVEfmt ".toByteArray()).putInt(16).putShort(1).putShort(1).putInt(8000).putInt(16000).putShort(2).putShort(16).put("data".toByteArray()).putInt(data.toInt());zip.write(h.array());src.seek(44);remaining-=44;copied+=44;notifyProgress()}
        while(remaining>0){checkCancelled();val n=src.read(buffer,0,minOf(buffer.size.toLong(),remaining).toInt());if(n<=0)throw java.io.EOFException("A recording changed during export; pause and try again");zip.write(buffer,0,n);remaining-=n;copied+=n;notifyProgress()}
       }
@@ -85,7 +117,7 @@ class Store(val context:Context) {
      runCatching{context.packageManager.getPackageInfo(context.packageName,0)}.onSuccess{metadata.put("app_version",it.versionName).put("app_version_code",if(android.os.Build.VERSION.SDK_INT>=28)it.longVersionCode else it.versionCode.toLong())}.onFailure{metadata.put("app_version_error",it.message)}
      runCatching{val current=ResourceStore(context).pinCurrent();if(current==null)metadata.put("active_resources",JSONObject.NULL) else try{val resources=JSONObject().put("format",current.formatVersion).put("bundle_version",current.version).put("archive_sha256",current.archiveHash);runCatching{JSONObject(File(current.directory,"verified.json").readText())}.onSuccess{resources.put("manifest",it)}.onFailure{resources.put("manifest_error",it.message)};metadata.put("active_resources",resources)}finally{ResourcePins.release(current)}}.onFailure{metadata.put("resource_error",it.message)}
      zip.putNextEntry(java.util.zip.ZipEntry("export_metadata.json"));zip.write(metadata.toString(2).toByteArray());zip.closeEntry()
-     zip.putNextEntry(java.util.zip.ZipEntry("README.txt"));zip.write("TangoWiz microphone audio, fingerprints, results and optional timing logs. Confidence scores are heuristic, not calibrated probabilities. Times UTC. No automatic uploads. Files are snapshots; WAV headers are repaired for saved PCM and incomplete fingerprint records are omitted.\n".toByteArray());zip.closeEntry()
+     zip.putNextEntry(java.util.zip.ZipEntry("README.txt"));zip.write("TangoWiz microphone audio, fingerprints, results and optional timing logs. Confidence scores are heuristic, not calibrated probabilities. Times UTC. No automatic uploads. History reactions are heart, puzzled, or an empty string. Files are snapshots; WAV headers are repaired for saved PCM and incomplete fingerprint records are omitted.\n".toByteArray());zip.closeEntry()
      checkCancelled();zip.finish();zip.flush();buffered.flush();fileOut.fd.sync()
     }
    }
@@ -93,4 +125,36 @@ class Store(val context:Context) {
    notifyProgress(true);return out
   }catch(e:Throwable){staging.delete();throw e}
  }
+
+ private fun writeExportHistory(
+  src:RandomAccessFile,length:Long,out:OutputStream,reactions:Map<String,*>,onRead:(Int)->Unit
+ ){
+  // Export only the bytes included in the file snapshot, even if recognition appends more.
+  val input=object:InputStream(){
+   override fun read():Int {
+    val byte=ByteArray(1)
+    return if(read(byte,0,1)==-1)-1 else byte[0].toInt() and 255
+   }
+   override fun read(buffer:ByteArray,offset:Int,count:Int):Int {
+    if(count==0)return 0
+    val remaining=length-src.filePointer
+    if(remaining==0L)return -1
+    val read=src.read(buffer,offset,minOf(count.toLong(),remaining).toInt())
+    if(read<0)throw EOFException("History changed during export")
+    onRead(read)
+    return read
+   }
+  }
+  val writer=out.bufferedWriter()
+  input.bufferedReader().useLines{lines->
+   for(line in lines){
+    val row=runCatching{JSONObject(line)}.getOrNull()
+    val marked=row?.put("reaction",reactions[Candidate.fromJson(row).reactionId] as? String ?: "")
+    writer.write(marked?.toString() ?: line)
+    writer.write("\n")
+   }
+  }
+  writer.flush()
+ }
+
 }

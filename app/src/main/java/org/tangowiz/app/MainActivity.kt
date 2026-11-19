@@ -57,12 +57,36 @@ class MainActivity:Activity(){
   val dj=icon("DJ","DJ popularity boost"){PhoneWatch.setLocal(this,org.json.JSONObject().put("djEnabled",!store.dj))};dj.id=104;dj.textSize=17f;toolbar.addView(dj,1)
   for(i in 1 until toolbar.childCount){val control=toolbar.getChildAt(i);if(control is Button){control.minWidth=0;control.minimumWidth=0;control.setPadding(0,0,0,0);control.layoutParams=LinearLayout.LayoutParams(0,dp(48),1f)}}
   phase=text("",14f);root.addView(phase)
-  best=LinearLayout(this).apply{orientation=1;setPadding(dp(8),dp(14),dp(8),dp(14));background=box(Color.rgb(34,39,54))};root.addView(best,LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(10)})
-  runner=LinearLayout(this).apply{orientation=1;setPadding(dp(8),dp(8),dp(8),dp(8));background=box(Color.rgb(28,32,45))};root.addView(runner,LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(10)})
+  best=LinearLayout(this).apply{orientation=1;setPadding(dp(8),dp(14),dp(8),dp(14))};root.addView(reactionRow(best).apply{background=box(Color.rgb(34,39,54))},LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(10)})
+  runner=LinearLayout(this).apply{orientation=1;setPadding(dp(8),dp(8),dp(8),dp(8))};root.addView(reactionRow(runner).apply{background=box(Color.rgb(28,32,45))},LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(10)})
   val recognitionControls=LinearLayout(this);root.addView(recognitionControls,LinearLayout.LayoutParams(-1,dp(76)).apply{topMargin=dp(16);bottomMargin=dp(16)})
   listen=icon("▶","Start listening"){toggle()};recognitionControls.addView(listen,LinearLayout.LayoutParams(0,-1,1f))
   recognitionControls.addView(icon("↺","Reset recognition, keep last two seconds"){if(LiveState.current.listening)startService(Intent(this,RecognitionService::class.java).setAction(RecognitionService.RESET))}.apply{id=103},LinearLayout.LayoutParams(dp(76),-1).apply{leftMargin=dp(8)})
-  historyAdapter=object:BaseAdapter(){override fun getCount()=historyRows.size;override fun getItem(p:Int)=historyRows[p];override fun getItemId(p:Int)=p.toLong();override fun getView(p:Int,old:View?,parent:android.view.ViewGroup?):View {val r=historyRows[p];val credit=Candidate.fromJson(r);val item=(old as? LinearLayout)?:LinearLayout(this@MainActivity).apply{orientation=1;setPadding(0,dp(9),0,dp(9));addView(text("",16f));addView(text("",17f))};val time=runCatching{DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault()).format(Instant.parse(r.getString("time")))}.getOrDefault("");val header="$time   ${visibleLabel(credit.display("orchestra").ifEmpty{"?"})}   ${r.optInt("confidence_score")}%"+(if(r.optJSONObject("dj")!=null)" · DJ "+if(r.getJSONObject("dj").optBoolean("enabled"))"on" else "off" else "");val detail=listOf(credit.display("title"),credit.display("singer"),credit.display("year")).filter{it.isNotEmpty()}.joinToString(" · ");(item.getChildAt(0) as TextView).apply{text=header;maxLines=2;ellipsize=android.text.TextUtils.TruncateAt.END;contentDescription=header};(item.getChildAt(1) as TextView).apply{text=visibleLabel(detail);maxLines=2;ellipsize=android.text.TextUtils.TruncateAt.END;contentDescription=detail};item.setOnClickListener{details(credit)};item.alpha=if(r.optString("state")=="strong")1f else .65f;return item}}
+  historyAdapter=object:BaseAdapter(){
+   override fun getCount()=historyRows.size
+   override fun getItem(p:Int)=historyRows[p]
+   override fun getItemId(p:Int)=p.toLong()
+   override fun getView(p:Int,old:View?,parent:android.view.ViewGroup?):View {
+    val row=historyRows[p]
+    val credit=Candidate.fromJson(row)
+    val item=(old as? LinearLayout)?:reactionRow(LinearLayout(this@MainActivity).apply{
+     orientation=1
+     setPadding(0,dp(9),0,dp(9))
+     addView(text("",16f))
+     addView(text("",17f))
+    })
+    val labels=item.getChildAt(0) as LinearLayout
+    val time=runCatching{DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault()).format(Instant.parse(row.getString("time")))}.getOrDefault("")
+    val header="$time   ${visibleLabel(credit.display("orchestra").ifEmpty{"?"})}   ${row.optInt("confidence_score")}%"
+    val detail=listOf(credit.display("title"),credit.display("singer"),credit.display("year")).filter{it.isNotEmpty()}.joinToString(" · ")
+    (labels.getChildAt(0) as TextView).apply{text=header;maxLines=2;ellipsize=android.text.TextUtils.TruncateAt.END;contentDescription=header}
+    (labels.getChildAt(1) as TextView).apply{text=visibleLabel(detail);maxLines=2;ellipsize=android.text.TextUtils.TruncateAt.END;contentDescription=detail}
+    labels.setOnClickListener{details(credit)}
+    labels.alpha=if(row.optString("state")=="strong")1f else .65f
+    bindReaction(item,credit.reactionId)
+    return item
+   }
+  }
   history=ListView(this).apply{adapter=historyAdapter;divider=null;setBackgroundColor(bg)};root.addView(history,LinearLayout.LayoutParams(-1,0,1f));render();if(!handleAudioReplay())handleWatchLaunch()
  }
  override fun onStart(){super.onStart();if(!::store.isInitialized||!ensureResources())return;foreground=true;LiveState.listeners.add(changed);ResourceProgress.listeners.add(resourceChanged);render();showUpdateOffer();if(ResourceStore(this).dueAutomaticCheck())window.decorView.post{if(foreground)startForegroundService(Intent(this,ResourceDownloadService::class.java).setAction("CHECK").putExtra("download",false))}}
@@ -195,7 +219,46 @@ class MainActivity:Activity(){
  private fun visibleLabel(value:String)=if(value.contains(" ?"))"? "+value.removeSuffix(" ?") else value
  private fun limited(value:String,size:Float,lines:Int)=text(visibleLabel(value),size).apply{maxLines=lines;ellipsize=android.text.TextUtils.TruncateAt.END;contentDescription=value}
  private fun details(c:Candidate){val full=listOf(c.display("orchestra"),c.display("title"),c.display("singer"),c.display("year")).filter{it.isNotEmpty()}.joinToString("\n\n")+"\n\nDJ "+(if(c.djRequested&&c.djAvailable)"on" else if(!c.djAvailable)"unavailable" else "off")+" · Acoustic %.4f · DJ +%.2f%%".format(c.score,c.djPercent*100);val scroll=ScrollView(this).apply{addView(text(full,19f))};android.app.AlertDialog.Builder(this).setView(scroll).setPositiveButton("Close",null).show()}
- private fun candidate(panel:LinearLayout,c:Candidate?,primary:Boolean){panel.removeAllViews();panel.setOnClickListener(null);if(c==null||!ConfidenceVisibility.visible(ConfidenceCalibration.percent(ResourceStore(this).current(),c.rankingScore))){panel.visibility=View.GONE;return};panel.visibility=View.VISIBLE
+ private fun reactionRow(labels:LinearLayout)=LinearLayout(this).apply{
+  gravity=Gravity.CENTER_VERTICAL
+  addView(labels,LinearLayout.LayoutParams(0,-2,1f))
+ }
+
+ private fun bindReaction(row:LinearLayout,id:String){
+  val old=row.getChildAt(1) as? Button
+  if(old!=null&&old.tag!=id)row.removeView(old)
+  if(id.isBlank())return
+  val button=old?.takeIf{it.tag==id}?:icon("♡","Add heart"){
+   setReaction(id,if(store.reaction(id)==null)SongReaction.HEART else null)
+  }.apply{
+   tag=id
+   minWidth=0
+   minimumWidth=0
+   minHeight=0
+   setPadding(0,0,0,0)
+   setOnLongClickListener{
+    val choices=SongReaction.entries
+    android.app.AlertDialog.Builder(this@MainActivity)
+     .setTitle("Song reaction")
+     .setItems(choices.map{"${it.symbol} ${it.label}"}.toTypedArray()){_,which->setReaction(id,choices[which])}
+     .show()
+    true
+   }
+   row.addView(this,LinearLayout.LayoutParams(dp(48),dp(48)))
+  }
+  val reaction=store.reaction(id)
+  button.text=reaction?.symbol?:"♡"
+  button.contentDescription=if(reaction==null)"Add heart. Hold to choose a reaction." else "${reaction.label}. Tap to clear or hold to change."
+  button.tooltipText=button.contentDescription
+ }
+
+ private fun setReaction(id:String,reaction:SongReaction?){
+  store.setReaction(id,reaction)
+  render()
+  historyAdapter.notifyDataSetChanged()
+ }
+
+ private fun candidate(panel:LinearLayout,c:Candidate?,primary:Boolean){val holder=panel.parent as LinearLayout;panel.removeAllViews();panel.setOnClickListener(null);if(c==null||!ConfidenceVisibility.visible(ConfidenceCalibration.percent(ResourceStore(this).current(),c.rankingScore))){holder.visibility=View.GONE;panel.visibility=View.GONE;bindReaction(holder,"");return};holder.visibility=View.VISIBLE;panel.visibility=View.VISIBLE;bindReaction(holder,c.reactionId)
   panel.setOnClickListener{details(c)}
   val percent=ConfidenceCalibration.percent(ResourceStore(this).current(),c.rankingScore)
   val row=LinearLayout(this);row.addView(limited(c.display("orchestra").ifEmpty{"?"},if(primary)25f else 18f,2).apply{setTypeface(null,Typeface.BOLD)},LinearLayout.LayoutParams(0,-2,1f));row.addView(text("${percent}%",if(primary)25f else 18f).apply{setTextColor(Color.rgb((220*(1-percent/100f)).toInt().coerceIn(0,220),170,95));contentDescription="Experimental confidence estimate ${percent} percent"});panel.addView(row);panel.addView(limited(c.display("title"),if(primary)22f else 17f,3));val detail=listOf(c.display("singer"),c.display("year")).filter{it.isNotEmpty()}.joinToString(" · ");if(detail.isNotEmpty())panel.addView(limited(detail,14f,2))

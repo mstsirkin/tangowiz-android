@@ -50,7 +50,7 @@ class WatchHistoryActivity:Activity(){
   for(n in history.length()-1 downTo maxOf(0,history.length()-100)){
    val row=history.optJSONObject(n)?:continue
    val time=runCatching{java.time.format.DateTimeFormatter.ofPattern("HH:mm").withZone(java.time.ZoneId.systemDefault()).format(java.time.Instant.parse(row.optString("time")))}.getOrDefault("")
-   label(listOf((time+"  "+row.optString("orchestra")).trim(),row.optString("title"),row.optString("singer"),row.optString("year"),row.optJSONObject("dj")?.let{if(it.optBoolean("enabled"))"DJ on" else "DJ off"}?:"").filter{it.isNotBlank()}.joinToString("\n"),details=true)
+   label(listOf((time+"  "+row.optString("orchestra")).trim(),row.optString("title"),row.optString("singer"),row.optString("year")).filter{it.isNotBlank()}.joinToString("\n"),details=true)
   }
   scroll.post{scroll.scrollTo(0,position)}
  }

@@ -49,7 +49,11 @@ object OrchestraPresentationValidation {
    val history=store.history();check(RecordingHistory.consecutive(history).size==2);check(history[0].getJSONArray("sourceIds").length()==1&&history[1].getJSONArray("sourceIds").length()==1)
    check(history.all{r->!r.toString().contains("groupId")&&!r.toString().contains("group_id")&&!r.toString().contains("runner_up_group")});check(Candidate.fromJson(history[0]).presentationContributors.size==2);val storedContributors=history[0].getJSONArray("presentationContributors");for(n in 0 until storedContributors.length()){val item=storedContributors.getJSONObject(n);check(item.keys().asSequence().toSet()==setOf("id","sourceIds","score","speed"));check(item.getJSONArray("sourceIds").length()==1)};check(storedContributors.getJSONObject(0).getDouble("score")==.804814)
    check(File(store.root,"session/matches.jsonl").readLines().all{JSONObject(it).getJSONObject("result").toString()==raw.toString()})
-   val archive=store.export();ZipFile(archive).use{z->val text=z.getInputStream(z.getEntry("history.jsonl")).bufferedReader().readText();check(text.contains("presentationContributors")&&text.contains("youtube-loJb46V_Egg"))}
+   store.setReaction(best.id,SongReaction.PUZZLED)
+   check(Store(ctx).reaction(best.id)==SongReaction.PUZZLED)
+   val archive=store.export();ZipFile(archive).use{z->val text=z.getInputStream(z.getEntry("history.jsonl")).bufferedReader().readText();check(text.contains("presentationContributors")&&text.contains("youtube-loJb46V_Egg"));check(text.lineSequence().filter{it.isNotBlank()}.map{JSONObject(it).getString("reaction")}.toList()==listOf("puzzled",""))}
+   store.setReaction(best.id,null)
+   archive.delete()
    checks.put("saved combined metadata/contributor provenance export correctly; different Caló song anchors stay separate and no internal group IDs enter history")
    activity=i.startActivitySync(Intent(i.targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
    fun texts(v:View):List<String> =if(v is TextView)listOf(v.text.toString()) else if(v is ViewGroup)(0 until v.childCount).flatMap{texts(v.getChildAt(it))} else emptyList()
@@ -58,10 +62,66 @@ object OrchestraPresentationValidation {
    val runnerView=MainActivity::class.java.getDeclaredField("runner").apply{isAccessible=true}.get(activity) as View
    check(texts(bestView).count{it=="Miguel Caló"}==1);check(texts(bestView).any{it.contains("Un crimen")&&it.contains("4 Compases")&&it.startsWith("? ")});check(texts(runnerView).any{it=="Francisco Canaro"});check(texts(runnerView).none{it=="Miguel Caló"})
    checks.put("actual Main displays one Caló row with uncertain metadata and a different-orchestra runner-up")
+   val mainStore=Store(i.targetContext)
+   val reactionId="reaction-test-${System.nanoTime()}"
+   val alternateId="$reactionId-alternate"
+   val reactionCandidate=conflict.copy(id=reactionId,sourceIds=listOf(reactionId,alternateId),djRequested=true,djAvailable=true)
+   mainStore.result(reactionCandidate.copy(id=alternateId),null,10.0,"reaction-test")
+   i.runOnMainSync{LiveState.publish(RecognitionState(best=reactionCandidate))}
+   val list=MainActivity::class.java.getDeclaredField("history").apply{isAccessible=true}.get(activity) as android.widget.ListView
+   val deadline=android.os.SystemClock.elapsedRealtime()+5000
+   var historyReady=false
+   while(!historyReady&&android.os.SystemClock.elapsedRealtime()<deadline){
+    i.runOnMainSync{historyReady=list.count>0&&(list.adapter.getItem(0) as JSONObject).getString("id")==alternateId}
+    if(!historyReady)android.os.SystemClock.sleep(50)
+   }
+   check(historyReady){"The recording did not appear in History"}
+   fun liveReaction()=(bestView.parent as ViewGroup).getChildAt(1) as android.widget.Button
+   fun historyReaction():android.widget.Button {
+    val row=list.adapter.getView(0,null,list) as ViewGroup
+    return row.getChildAt(1) as android.widget.Button
+   }
+   i.runOnMainSync{
+    val historyRow=list.adapter.getView(0,null,list)
+    check(texts(historyRow).none{it.contains("DJ on")||it.contains("DJ off")})
+    check(historyReaction().tag==reactionCandidate.id)
+    check(liveReaction().text=="♡")
+    liveReaction().performClick()
+    check(historyReaction().text=="❤️")
+    check(liveReaction().performLongClick())
+   }
+   i.waitForIdleSync()
+   i.runOnMainSync{
+    fun lists(view:View):List<android.widget.ListView> = when(view){
+     is android.widget.ListView->listOf(view)
+     is ViewGroup->(0 until view.childCount).flatMap{lists(view.getChildAt(it))}
+     else->emptyList()
+    }
+    val chooser=android.view.inspector.WindowInspector.getGlobalWindowViews()
+     .flatMap{lists(it)}
+     .single{it.adapter.count==2&&it.adapter.getItem(1).toString().contains("Puzzled")}
+    check(chooser.adapter.getItem(0).toString().contains("Heart"))
+    check(chooser.performItemClick(chooser.getChildAt(1),1,chooser.adapter.getItemId(1)))
+   }
+   i.waitForIdleSync()
+   i.runOnMainSync{
+    check(liveReaction().text=="🤔"&&historyReaction().text=="🤔")
+    historyReaction().performClick()
+    check(liveReaction().text=="♡")
+   }
+   check(Store(i.targetContext).reaction(reactionCandidate.id)==null)
+   i.runOnMainSync{LiveState.publish(RecognitionState(best=conflict,second=merged[1]))}
+   checks.put("live and History share a reaction, long press offers Puzzled, and tapping a marked History row clears it")
+
    val longOptions=JSONObject().put("title",JSONArray((0..9).map{"Long alternative song title $it"}));val long=c(row("long","Miguel Caló",title="Long alternative song title 0",options=longOptions))
    i.runOnMainSync{LiveState.publish(RecognitionState(best=long,second=merged[1]))};i.waitForIdleSync();val titleView=(bestView as ViewGroup).getChildAt(1) as TextView
    check(titleView.maxLines==3&&titleView.ellipsize==android.text.TextUtils.TruncateAt.END&&titleView.text.startsWith("? ")&&titleView.contentDescription.contains("Long alternative song title 9"))
-   i.runOnMainSync{bestView.performClick()};i.waitForIdleSync();val until=android.os.SystemClock.elapsedRealtime()+10000;var expanded=false;while(!expanded&&android.os.SystemClock.elapsedRealtime()<until){expanded=i.uiAutomation.rootInActiveWindow?.findAccessibilityNodeInfosByText("Long alternative song title 9")?.isNotEmpty()==true;if(!expanded)android.os.SystemClock.sleep(50)};check(expanded);i.uiAutomation.executeShellCommand("input keyevent 4").close()
+   i.runOnMainSync{bestView.performClick()}
+   i.waitForIdleSync()
+   i.runOnMainSync{
+    val windows=android.view.inspector.WindowInspector.getGlobalWindowViews().filter{it!=activity!!.window.decorView}
+    check(windows.flatMap{texts(it)}.any{it.contains("Long alternative song title 9")})
+   }
    checks.put("long card labels are bounded with visible leading uncertainty, full accessibility text and a tappable scrollable details dialog")
    i.runOnMainSync{activity!!.finishAndRemoveTask()};val report=JSONObject().put("status","passed").put("count",checks.length()).put("checks",checks)
    File(i.targetContext.filesDir,"orchestra-presentation-validation.json").writeText(report.toString(2));i.finish(0,Bundle().apply{putString("summary",report.toString())})
