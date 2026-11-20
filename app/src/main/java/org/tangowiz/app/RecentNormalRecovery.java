@@ -9,9 +9,7 @@ public final class RecentNormalRecovery {
     private int observations;
     private double firstOffset, lastOffset, lastReference;
 
-    private final java.util.Map<String, RecentNormalRecovery> copies = new java.util.HashMap<>();
-    private String candidateGroup = "";
-    private void clearEvidence() { identity = ""; observations = 0; copies.clear(); candidateGroup = ""; }
+    private void clearEvidence() { identity = ""; observations = 0; }
     public void clear() { lastCheck = Double.NEGATIVE_INFINITY; clearEvidence(); }
 
     public boolean shouldCheck(double queryOffset, double currentScore, int normalFrames, boolean audible) {
@@ -46,26 +44,6 @@ public final class RecentNormalRecovery {
         lastOffset = queryOffset; lastReference = referenceSeconds;
         boolean confirmed = observations >= 3 && queryOffset - firstOffset >= 1.999;
         if (confirmed) clearEvidence();
-        return confirmed;
-    }
-    /** Only scored copies in the same recording group may contribute evidence.
-     * Each copy retains its own reference clock; group labels never align offsets. */
-    public boolean observeCandidates(double t, String group, String[] ids, double[] scores,
-                                     double current, double[] refs, int frames, double speed) {
-        if(group==null || group.isEmpty() || ids==null || scores==null || refs==null
-                || ids.length==0 || ids.length>256 || ids.length!=scores.length || ids.length!=refs.length) {
-            clearEvidence(); return false;
-        }
-        java.util.Set<String> seen=new java.util.HashSet<>();
-        for(String id:ids) if(id==null || id.isEmpty() || !seen.add(id)) { clearEvidence(); return false; }
-        if(!candidateGroup.equals(group)) { clearEvidence(); candidateGroup=group; }
-        copies.keySet().retainAll(seen);
-        boolean confirmed=false;
-        for(int i=0;i<ids.length;i++) {
-            RecentNormalRecovery copy=copies.computeIfAbsent(ids[i], key->new RecentNormalRecovery());
-            confirmed |= copy.observe(t,ids[i],scores[i],current,refs[i],frames,speed);
-        }
-        if(confirmed) clearEvidence();
         return confirmed;
     }
 }

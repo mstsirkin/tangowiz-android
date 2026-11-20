@@ -41,7 +41,7 @@ class Engine {
  std::map<int,uint64_t> totals;
  std::map<int,float> lastOffset;
  float latestOffset=-1;
- struct Ranked {float score;uint64_t track,start;float speed;size_t matchedFrames=0;};
+ struct Ranked {float score;uint64_t track,start;float speed;};
  std::map<int,std::vector<Ranked>> ranked;
  mutable std::map<std::tuple<uint64_t,uint64_t,int64_t>,DuplicateEvidence> duplicateCache;
  public: Engine(const uint8_t* base,uint64_t bytes); std::vector<int64_t> neighbors(const float*q,std::vector<float>*scores=nullptr);std::string search(const float*e,int count,float speed,float offset);double recent(int count)const;

@@ -99,43 +99,11 @@ std::string Engine::search(const float*e,int count,float speed,float offset){
 #else
  for(int j=0;j<n;j++)score+=similarity(fs[j].vector.data(),start+j);
 #endif
-score/=n;auto it=best.find(tr);if(it==best.end()||score>it->second.score)best[tr]={score,tr,(uint64_t)start,st.first/10000.f};}
-#if TANGO_BOUNDARY_OVERLAP
- // Only a weak full-window result may be challenged by a reference-start overlap.
- // The discarded prefix has no reference counterpart; never read across bounds.
- float fullBest=-1;for(const auto&entry:best)fullBest=std::max(fullBest,entry.second.score);
- if(fullBest<.60f && n>=10){
-  std::set<std::pair<uint64_t,int>> overlaps;
-  for(int j=0;j<n;j++)for(auto id:fs[j].neighbors){
-   if(id<0||uint64_t(id)>=ntotal)continue;
-   const uint64_t track=std::upper_bound(bounds,bounds+nrefs+1,id)-bounds-1;
-   const int64_t prefix=bounds[track]-(id-j);
-   if(prefix>0&&prefix<=n-10&&bounds[track]+n-prefix<=bounds[track+1])overlaps.emplace(track,int(prefix));
-  }
-  for(const auto&overlap:overlaps){
-   const uint64_t track=overlap.first;const int prefix=overlap.second,count=n-prefix;float sum=0;
-   for(int j=0;j<count;j++){
-#if TANGO_SCORE_CACHE
-    sum+=cachedSimilarity(fs[prefix+j],bounds[track]+j);
-#else
-    sum+=similarity(fs[prefix+j].vector.data(),bounds[track]+j);
-#endif
-   }
-   const float score=sum/count;
-   if(score<.65f||score<fullBest+.08f)continue;
-   auto found=best.find(track);
-   if(found==best.end()||score>found->second.score)best[track]={score,track,uint64_t(bounds[track]),st.first/10000.f,size_t(count)};
-  }
- }
-#endif
- }
-
+score/=n;auto it=best.find(tr);if(it==best.end()||score>it->second.score)best[tr]={score,tr,(uint64_t)start,st.first/10000.f};}}
  auto&updated=ranked[key];updated.clear();for(auto&h:best)updated.push_back(h.second);best.clear();size_t maxFrames=0;for(auto&s:streams)maxFrames=std::max(maxFrames,s.second.size());for(auto&stream:ranked){if(streams[stream.first].size()*5<maxFrames*4||latestOffset-lastOffset[stream.first]>3.f)continue;for(auto&h:stream.second){auto it=best.find(h.track);if(it==best.end()||h.score>it->second.score)best[h.track]=h;}}return render(best,frames.size(),began,std::chrono::duration<double,std::milli>(lookupEnd-lookupBegin).count(),cpuBegin);
 }
 std::string Engine::render(const std::map<uint64_t,Ranked>&best,size_t frameCount,std::chrono::steady_clock::time_point began,double lookupMs,timespec cpuBegin){
  using Hit=Ranked;std::vector<Hit> hits;for(auto&h:best)hits.push_back(h.second);std::sort(hits.begin(),hits.end(),[](const Hit&a,const Hit&b){return a.score!=b.score?a.score>b.score:a.track<b.track;});
- const size_t retainedFrames=frameCount;
- if(!hits.empty()&&hits.front().matchedFrames)frameCount=hits.front().matchedFrames;
  // Group only direct, sustained reference fingerprint matches to the strongest
  // anchor. Candidate ranking scores and database identities remain untouched.
  auto groupingBegin=std::chrono::steady_clock::now();
@@ -177,9 +145,7 @@ std::string Engine::render(const std::map<uint64_t,Ranked>&best,size_t frameCoun
   out<<"{\"id\":"<<quote(text(m[0]))<<",\"title\":"<<quote(text(m[1]))<<",\"orchestra\":"<<quote(orch)<<",\"singer\":"<<quote(text(m[3]))<<",\"year\":"<<quote(text(m[4]))<<",\"score\":"<<h.score<<",\"confidence\":"<<std::clamp(h.score,0.f,1.f)<<",\"referenceSeconds\":"<<(h.start-bounds[h.track])*.5<<",\"referenceEndSeconds\":"<<(bounds[h.track+1]-bounds[h.track])*.5<<",\"speed\":"<<h.speed<<",\"groupId\":"<<quote("acoustic:"+*sourceIds.begin())<<",\"groupSize\":"<<sourceIds.size()<<",\"sourceIds\":[";
   int item=0;for(auto&id:sourceIds){if(item++)out<<',';out<<quote(id);}out<<"],\"metadataAlternatives\":{";
   const char*names[]={"orchestra","title","singer","year"};for(int field=0;field<4;field++){if(field)out<<',';out<<quote(names[field])<<":[";item=0;for(auto&value:alternatives[field]){if(item++)out<<',';out<<quote(value);}out<<']';}
-  out<<"},\"sourceMetadata\":[";for(size_t j=0;j<g.metadataTracks.size();j++){if(j)out<<',';const auto track=g.metadataTracks[j];auto*mm=metadataRow(track);std::string orchestra=text(mm[2]);if(orchestra.empty())orchestra=text(mm[5]);out<<"{\"id\":"<<quote(text(mm[0]))<<",\"title\":"<<quote(text(mm[1]))<<",\"orchestra\":"<<quote(orchestra)<<",\"singer\":"<<quote(text(mm[3]))<<",\"year\":"<<quote(text(mm[4]))<<",\"scored\":"<<(best.count(track)?"true":"false")<<",\"score\":";if(best.count(track)){
-   const auto&scored=best.at(track);out<<scored.score<<",\"referenceSeconds\":"<<(scored.start-bounds[track])*.5<<",\"frames\":"<<(scored.matchedFrames?scored.matchedFrames:retainedFrames)<<",\"speed\":"<<scored.speed;
-  }else out<<"null";out<<'}';}
+  out<<"},\"sourceMetadata\":[";for(size_t j=0;j<g.metadataTracks.size();j++){if(j)out<<',';const auto track=g.metadataTracks[j];auto*mm=metadataRow(track);std::string orchestra=text(mm[2]);if(orchestra.empty())orchestra=text(mm[5]);out<<"{\"id\":"<<quote(text(mm[0]))<<",\"title\":"<<quote(text(mm[1]))<<",\"orchestra\":"<<quote(orchestra)<<",\"singer\":"<<quote(text(mm[3]))<<",\"year\":"<<quote(text(mm[4]))<<",\"scored\":"<<(best.count(track)?"true":"false")<<",\"score\":";if(best.count(track))out<<best.at(track).score;else out<<"null";out<<'}';}
   out<<"],\"groupingEvidence\":{\"method\":"<<quote(formatVersion==2?"catalog_duplicate_group_v2":"reference_pq_cosine_v1")<<",\"pairs\":[";
   for(size_t j=0;j<g.evidence.size();j++){if(j)out<<',';const auto&v=g.evidence[j];out<<"{\"anchorId\":"<<quote(text(m[0]))<<",\"sourceId\":"<<quote(text(metadataRow(g.members[j+1].track)[0]))<<",\"meanCosine\":"<<v.mean<<",\"p10Cosine\":"<<v.p10<<",\"overlapSeconds\":"<<v.overlapSeconds<<",\"samples\":"<<v.samples<<'}';}out<<"]}}";
  }
