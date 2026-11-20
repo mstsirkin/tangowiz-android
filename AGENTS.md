@@ -1,5 +1,12 @@
 # Android app release validation
 
+Commit all APK source and build changes before starting an APK build. Build from
+a clean checkout of the intended commit and record its revision with the APK.
+
+Run matching experiments in the native host harness first. Integrate an
+experiment into the application only after it meets its recognition acceptance
+criteria on the relevant fixtures.
+
 Always test changed Android apps in an emulator before distributing APKs for
 physical-phone testing. Compilation and JVM tests alone are insufficient.
 Exercise the changed recognition paths and fail validation on worker exceptions
