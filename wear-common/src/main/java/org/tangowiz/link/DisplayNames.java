@@ -1,9 +1,14 @@
 package org.tangowiz.link;
 
 import java.util.Locale;
+import java.util.StringJoiner;
+import java.util.regex.Pattern;
 
 /** Presentation rules only. These labels must never be used as recording identities. */
 public final class DisplayNames {
+    private static final Pattern SINGER_SEPARATOR = Pattern.compile(
+            "\\s*[,;&]\\s*|\\s+y\\s+", Pattern.CASE_INSENSITIVE);
+
     private DisplayNames() {}
 
     /** Use the resource-supplied preferred label; do not guess an orchestra's surname. */
@@ -36,8 +41,17 @@ public final class DisplayNames {
         String prefix = "", suffix = "";
         if (full.startsWith("? ")) { prefix = "? "; full = full.substring(2).trim(); }
         if (full.endsWith(" ?")) { suffix = " ?"; full = full.substring(0, full.length() - 2).trim(); }
-        String last = firstName ? null : surname(full);
-        return prefix + (last == null ? full : last) + suffix;
+        return prefix + (firstName ? full : shortSingerCredit(full)) + suffix;
+    }
+
+    private static String shortSingerCredit(String full) {
+        StringJoiner names = new StringJoiner(", ");
+        for (String singer : SINGER_SEPARATOR.split(full, -1)) {
+            String last = surname(singer);
+            if (last == null) return full;
+            names.add(last);
+        }
+        return names.toString();
     }
 
     private static boolean ambiguous(String value) {

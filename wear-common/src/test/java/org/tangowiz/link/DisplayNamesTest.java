@@ -16,6 +16,14 @@ public class DisplayNamesTest {
             assertNull(DisplayNames.surname(credit));
         }
     }
+    @Test public void shortensEachNameInExplicitMultiSingerCredits() {
+        String trio = "Horacio Lagos, Lita Morales, Romeo Gavioli";
+        assertEquals("Lagos, Morales, Gavioli", DisplayNames.singer(trio, false));
+        assertEquals(trio, DisplayNames.singer(trio, true));
+        assertEquals("Lagos, Morales", DisplayNames.singer("Horacio Lagos & Lita Morales", false));
+        assertEquals("Morales, Lagos", DisplayNames.singer("Lita Morales y Horacio Lagos", false));
+        assertEquals("Lagos, Morales ?", DisplayNames.singer("Horacio Lagos, Lita Morales ?", false));
+    }
     @Test public void preservesUncertaintyAndDoesNotTreatAnnotationsAsNames() {
         assertEquals("? Podestá", DisplayNames.singer("? Alberto Podestá", false));
         assertEquals("Podestá ?", DisplayNames.singer("Alberto Podestá ?", false));

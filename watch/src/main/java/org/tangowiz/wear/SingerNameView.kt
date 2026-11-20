@@ -32,6 +32,9 @@ class SingerNameView(context:Context):TextView(context){
  private fun fitCredit(){
   val showFirst=includeFirst||reveal.visible(SystemClock.uptimeMillis())
   val display=DisplayNames.singer(full,showFirst);val surname=if(showFirst)DisplayNames.surname(full) else null
+  val shortCredit=DisplayNames.singer(full,false)
+  val multipleSingers=shortCredit.contains(',')&&shortCredit!=full
+  maxLines=if(multipleSingers&&showFirst)2 else 1
   val width=width-compoundPaddingLeft-compoundPaddingRight;val height=height-compoundPaddingTop-compoundPaddingBottom
   var styled:SpannableString?=null
   var firstNameSize=22
@@ -48,7 +51,7 @@ class SingerNameView(context:Context):TextView(context){
   }
   setTypeface(null,Typeface.NORMAL)
   if(styled!=null){setAutoSizeTextTypeWithDefaults(AUTO_SIZE_TEXT_TYPE_NONE);setTextSize(TypedValue.COMPLEX_UNIT_SP,firstNameSize.toFloat());text=styled}
-  else{setAutoSizeTextTypeUniformWithConfiguration(22,26,1,TypedValue.COMPLEX_UNIT_SP);text=display}
+  else{setAutoSizeTextTypeUniformWithConfiguration(if(multipleSingers)14 else 22,26,1,TypedValue.COMPLEX_UNIT_SP);text=display}
   contentDescription="Singer: $full; "+if(reveal.visible(SystemClock.uptimeMillis()))"tap to hide full credit" else "tap to show full credit temporarily"
  }
 }

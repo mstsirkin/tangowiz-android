@@ -4,6 +4,26 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class DisplayLabelNormalizationTest {
+ private fun watchTitle(vararg titles:String)=Candidate(
+  "recording","Orchestra",titles.first(),metadataAlternatives=mapOf("title" to titles.toList())
+ ).watchTitle()
+
+ @Test fun watchShowsOneTitleForAnAlternateNameAndDropsGenreTags() {
+  assertEquals("Argañaraz (Aquellas farras)",watchTitle("Argañaraz","Argañaraz (Aquellas farras)"))
+  assertEquals("Más allá",watchTitle("Más allá (tango)"))
+  assertEquals("Más allá",watchTitle("Más allá [TANGO]","Más allá"))
+ }
+
+ @Test fun watchKeepsRecordingVersionsAndDistinctWorkClaims() {
+  assertEquals("Pasional (1951)",watchTitle("Pasional (1951)"))
+  assertEquals("Desde el alma (Vals 1970) / Desde el alma ?",watchTitle("Desde el alma (Vals 1970)","Desde el alma"))
+  assertEquals("Argañaraz (Aquellas farras) / Sombras ?",watchTitle("Argañaraz (Aquellas farras)","Sombras"))
+ }
+
+ @Test fun watchKeepsTitleOrderWhenAnAlternateNameAppearsLater() {
+  assertEquals("Argañaraz (Aquellas farras) / Sombras ?",watchTitle("Argañaraz","Sombras","Argañaraz (Aquellas farras)"))
+ }
+
  private fun labels(a:String,b:String)=MetadataLabels.resolve(
   Candidate("recording", "Orchestra", a, metadataAlternatives=mapOf("title" to listOf(a,b))),"title")
 

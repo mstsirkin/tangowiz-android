@@ -10,7 +10,10 @@ data class Candidate(val id:String,val orchestra:String,val title:String,val sin
  val aliases: Set<String> get()=(sourceIds+id).filter{it.isNotBlank()}.toSet()
  fun sameRecording(other:Candidate)=groupId.isNotBlank()&&groupId==other.groupId||aliases.intersect(other.aliases).isNotEmpty()
  fun labels(field:String):List<String>{val scalar=when(field){"orchestra"->orchestra;"title"->title;"singer"->singer;"year"->year;else->""};return (metadataAlternatives[field].orEmpty()+scalar).map{it.trim()}.filter{it.isNotEmpty()}.distinct()}
- fun display(field:String):String{val values=MetadataLabels.resolve(this,field);return values.joinToString(" / ")+(if(values.size>1)" ?" else "")}
+ fun display(field:String):String=displayValues(MetadataLabels.resolve(this,field))
+ fun watchTitle():String=displayValues(MetadataLabels.watchTitles(this))
+ private fun displayValues(values:List<String>):String=values.joinToString(" / ")+
+  (if(values.size>1)" ?" else "")
  fun alternativesJson()=JSONObject().also{j->for(field in MetadataLabels.fields)j.put(field,JSONArray(labels(field)))}
  companion object{
   fun fromJson(j:JSONObject):Candidate{
@@ -26,6 +29,11 @@ data class Candidate(val id:String,val orchestra:String,val title:String,val sin
 }
 object MetadataLabels{
  val fields=listOf("orchestra","title","singer","year")
+ private val trailingTitleNote=Regex("""^(.+?)\s*(?:\(([^()]*)\)|\[([^\[\]]*)\])$""")
+ private val genreNotes=setOf("tango","vals","tango vals","milonga")
+ private val recordingNote=Regex(
+  """\p{N}|\b(?:version|live|vivo|directo|instrumental|vocal|take|toma|remaster\w*|grabacion|edit|mix|demo|acustic\w*|alternativ[ao]|arr(?:eglo)?)\b"""
+ )
  private fun folded(value:String)=java.text.Normalizer.normalize(value,java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}+"),"").lowercase(java.util.Locale.ROOT).replace(Regex("[^\\p{L}\\p{N}]+")," ").trim()
  private fun shortOrchestra(value:String):String {
   val suffix=Regex("(?iu)\\s+y\\s+su\\s+orq(?:uesta)?\\.?\\s*(?:(?:t[ií]pica|tip)\\.?)?\\s*$")
@@ -44,6 +52,22 @@ object MetadataLabels{
    values=values.map{title->val parts=Regex("^(.+?)\\s+[-–—|]\\s+(.+)$").matchEntire(title);if(parts==null)title else{val base=parts.groupValues[1];val suffix=folded(parts.groupValues[2]).split(' ').filter{it.isNotBlank()};val corroborated=values.firstOrNull{folded(it)==folded(base)};if(corroborated!=null&&suffix.isNotEmpty()&&suffix.all{it in creditWords}&&suffix.any{it !in setOf("orquesta","tipica","orq","con","canta","y")})corroborated else title}}
   }
   return equivalent(values,field)
+ }
+ fun watchTitles(candidate:Candidate):List<String>{
+  val titles=resolve(candidate,"title").map { title ->
+   val note=trailingTitleNote.matchEntire(title)
+   if(note!=null&&folded(note.groupValues[2].ifEmpty{note.groupValues[3]}) in genreNotes)
+    note.groupValues[1].trimEnd()
+   else title
+  }
+  val preferredTitles=mutableMapOf<String,String>()
+  for(title in titles){
+   val note=trailingTitleNote.matchEntire(title) ?: continue
+   val annotation=folded(note.groupValues[2].ifEmpty{note.groupValues[3]})
+   if(annotation.isNotBlank()&&!recordingNote.containsMatchIn(annotation))
+    preferredTitles.putIfAbsent(DisplayLabelKey.normalize(note.groupValues[1]),title)
+  }
+  return equivalent(titles.map{preferredTitles[DisplayLabelKey.normalize(it)] ?: it},"title")
  }
  private data class DateLabel(val text:String,val from:java.time.LocalDate,val to:java.time.LocalDate)
  private fun dateLabel(value:String):DateLabel?=runCatching{
