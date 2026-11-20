@@ -79,4 +79,17 @@ public class RecentNormalRecoveryTest {
         assertFalse(p.shouldCheck(20.5, .2, 60, true));
         assertTrue(p.shouldCheck(21, .2, 60, true));
     }
+    @Test public void duplicateCopiesKeepIndependentAdvancingEvidenceWhenWinnerChanges() {
+        RecentNormalRecovery p = new RecentNormalRecovery();
+        assertFalse(p.observeCandidates(0,"group",new String[]{"a","b"},new double[]{.70,.69},.2,new double[]{0,8},10,1));
+        assertFalse(p.observeCandidates(1,"group",new String[]{"b","a"},new double[]{.71,.69},.2,new double[]{9,1},10,1));
+        assertTrue(p.observeCandidates(2,"group",new String[]{"a","b"},new double[]{.70,.69},.2,new double[]{2,10},10,1));
+    }
+
+    @Test public void groupLabelAloneCannotJoinUnsupportedOrIncoherentCopies() {
+        RecentNormalRecovery p = new RecentNormalRecovery();
+        for(int i=0;i<6;i++) assertFalse(p.observeCandidates(i,"group",new String[]{i%2==0?"a":"b"},new double[]{.8},.2,new double[]{i},10,1));
+        p.clear();
+        for(int i=0;i<6;i++) assertFalse(p.observeCandidates(i,"group",new String[]{"a","b"},new double[]{.8,.8},.2,new double[]{0,8},10,1));
+    }
 }
