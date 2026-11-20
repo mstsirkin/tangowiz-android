@@ -40,11 +40,12 @@ object HistoryNavigationValidation {
    val monitor=i.addMonitor(WatchHistoryActivity::class.java.name,null,false)
    ui{button(parent!!,"History").performClick()};child=i.waitForMonitorWithTimeout(monitor,10000)?:error("History button did not open child");i.removeMonitor(monitor)
    await("history button focus"){child!!.hasWindowFocus()}
-   check(button(child!!,"Refresh history").text.toString()=="↻")
+   val refresh=button(child!!,"Refresh history");check(refresh.text.toString()=="↻")
+   check(views(child!!.window.decorView).filterIsInstance<TextView>().none{it.text.toString()=="History"})
    val close=button(child!!,"Close history");val rect=Rect();ui{check(close.getGlobalVisibleRect(rect))}
    val scroll=views(child!!.window.decorView).filterIsInstance<ScrollView>().first()
    check(rect.top>=scroll.bottom){"History Close is not outside the scrolling list at the bottom"}
-   ui{scroll.fullScroll(View.FOCUS_DOWN)};i.waitForIdleSync();ui{check(close.getGlobalVisibleRect(Rect()))}
+   ui{scroll.fullScroll(View.FOCUS_DOWN)};i.waitForIdleSync();ui{check(close.getGlobalVisibleRect(Rect()));check(refresh.getGlobalVisibleRect(Rect()));check(refresh.parent===close.parent)}
    closeHistory(child!!,parent!!);report.put("history_button_and_fixed_bottom_close",true).put("refresh_retained",true)
    child=openBySwipe(parent!!)
    ui{views(child!!.window.decorView).filterIsInstance<TextView>().first{it.text.toString().contains("Previous song")}.performClick()};i.waitForIdleSync()

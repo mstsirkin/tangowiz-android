@@ -22,8 +22,12 @@ class WatchHistoryActivity:Activity(){
   body=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER_HORIZONTAL;setPadding(dp(26),dp(32),dp(26),dp(12))}
   scroll=ScrollView(this).apply{addView(body)}
   root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
+  val footer=LinearLayout(this).apply{gravity=Gravity.CENTER}
+  val refresh=Button(this).apply{text="↻";contentDescription="Refresh history";setOnClickListener{WatchLink.history()}}
+  footer.addView(refresh,LinearLayout.LayoutParams(dp(48),dp(48)))
   val close=Button(this).apply{text="Close";contentDescription="Close history";setOnClickListener{finish()}}
-  root.addView(close,LinearLayout.LayoutParams(dp(130),dp(48)).apply{gravity=Gravity.CENTER_HORIZONTAL;bottomMargin=dp(20)})
+  footer.addView(close,LinearLayout.LayoutParams(dp(82),dp(48)))
+  root.addView(footer,LinearLayout.LayoutParams(-1,dp(48)).apply{bottomMargin=dp(20)})
   setContentView(SwipeDismissFrameLayout(this).apply{
    addView(root)
    addCallback(object:SwipeDismissFrameLayout.Callback(){override fun onDismissed(layout:SwipeDismissFrameLayout){finish()}})
@@ -43,8 +47,7 @@ class WatchHistoryActivity:Activity(){
   },LinearLayout.LayoutParams(-1,-2))
  }
  private fun render(){
-  val position=scroll.scrollY;body.removeAllViews();label("History",24f)
-  body.addView(Button(this).apply{text="↻";contentDescription="Refresh history";setOnClickListener{WatchLink.history()}},LinearLayout.LayoutParams(-1,dp(52)))
+  val position=scroll.scrollY;body.removeAllViews()
   val history=WatchCache.history
   if(history.length()==0)label("No history yet")
   for(n in history.length()-1 downTo maxOf(0,history.length()-100)){
