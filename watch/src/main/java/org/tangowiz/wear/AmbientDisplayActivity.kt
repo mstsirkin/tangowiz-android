@@ -1,8 +1,6 @@
 package org.tangowiz.wear
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.*
@@ -28,7 +26,6 @@ class AmbientDisplayActivity:ComponentActivity(){
  private var ambient=false
  private var lowBit=false
  private var burnIn=false
- private var permissionAsked=false
  private var renderedMatch=""
  private var renderedConfident=false
  private fun matchKey()=WatchCache.state.optJSONObject("best")?.let{listOf("id","orchestra","title","singer","year").joinToString("|"){field->it.optString(field)}}?:""
@@ -47,7 +44,6 @@ class AmbientDisplayActivity:ComponentActivity(){
  override fun onCreate(savedInstanceState:Bundle?){
   super.onCreate(savedInstanceState);WatchCache.init(this)
   if(savedInstanceState==null)DisplaySession.enable(this)
-  permissionAsked=savedInstanceState?.getBoolean("permission_asked")?:false
   window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
   content=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(22),dp(18),dp(22),dp(16));setBackgroundColor(Color.BLACK)}
   clock=label(12f).apply{contentDescription="Time"};content.addView(clock,LinearLayout.LayoutParams(-1,dp(18)))
@@ -62,14 +58,8 @@ class AmbientDisplayActivity:ComponentActivity(){
   onBackPressedDispatcher.addCallback(this,object:OnBackPressedCallback(true){override fun handleOnBackPressed(){DisplaySession.close(this@AmbientDisplayActivity);finish()}})
   lifecycle.addObserver(observer)
  }
- override fun onStart(){super.onStart();started=true;WatchCache.listeners.add(changed);if(!DisplaySession.enabled(this)){finish();return};ensureSession();render();WatchLink.refresh();scheduleMinute()}
+ override fun onStart(){super.onStart();started=true;WatchCache.listeners.add(changed);if(!DisplaySession.enabled(this)){finish();return};render();WatchLink.refresh();scheduleMinute()}
  override fun onStop(){started=false;WatchCache.listeners.remove(changed);handler.removeCallbacks(minute);super.onStop()}
- override fun onSaveInstanceState(out:Bundle){out.putBoolean("permission_asked",permissionAsked);super.onSaveInstanceState(out)}
- private fun ensureSession(){
-  if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED){if(!permissionAsked){permissionAsked=true;requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),61)};return}
-  runCatching{startForegroundService(Intent(this,WatchDisplayService::class.java))}.onFailure{WatchCache.error=it.message?:"Cannot keep display active"}
- }
- override fun onRequestPermissionsResult(code:Int,permissions:Array<String>,results:IntArray){super.onRequestPermissionsResult(code,permissions,results);if(code==61){if(results.firstOrNull()==PackageManager.PERMISSION_GRANTED)ensureSession();render()}}
  private fun scheduleMinute(){handler.removeCallbacks(minute);if(started&&!ambient)handler.postDelayed(minute,60000-System.currentTimeMillis()%60000)}
  private fun uncertain(raw:String)=if(raw.contains(" ?"))"? "+raw.removeSuffix(" ?") else raw
  private fun render(){
@@ -85,7 +75,6 @@ class AmbientDisplayActivity:ComponentActivity(){
   val best=WatchCache.state.optJSONObject("best");val confidence=best?.optInt("percent")?.coerceIn(0,100)
   percent.text=confidence?.let{"$it%"}?:""
   status.text=when{
-   Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED->"Enable notifications to keep display"
    !WatchCache.protocolCompatible->WatchCache.error
    !WatchCache.connected->"Disconnected · cached"
    WatchCache.state.optString("error").isNotBlank()->WatchCache.state.optString("error")

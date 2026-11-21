@@ -80,7 +80,7 @@ class PairedWearValidation:Instrumentation(){
     check(WatchCache.capturing){"Watch microphone stopped during capture"}
     report.put("watch_audio_record_capture","passed_20_seconds")
     if(DisplaySession.enabled(ctx)){
-     ctx.startService(Intent(ctx,WatchDisplayService::class.java).setAction(DisplaySession.STOP))
+     runOnMainSync{DisplaySession.close(ctx)}
      SystemClock.sleep(1000)
      check(WatchCache.capturing&&WatchCache.state.optBoolean("listening")){"Closing display stopped identification or microphone"}
      report.put("closing_display_keeps_capture",true)
