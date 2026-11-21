@@ -70,8 +70,13 @@ object HistoryNavigationValidation {
    check(DisplaySession.enabled(ctx));report.put("history_close_returns_to_original_maximized_activity",true)
    child=openBySwipe(parent!!);swipe(child!!,true);await("maximized resumed after swipe"){parent!!.hasWindowFocus()};check(DisplaySession.enabled(ctx));child=null
    report.put("history_swipe_returns_to_original_maximized_activity",true)
-   ui{button(parent!!,"Close ambient display").performClick()};await("ambient close"){parent!!.isFinishing};check(!DisplaySession.enabled(ctx));check(WatchCache.state.optBoolean("listening"))
-   report.put("ambient_close_does_not_stop_recognition",true).put("status","passed")
+   ui{
+    val ambient=parent as AmbientDisplayActivity
+    check(views(ambient.window.decorView).filterIsInstance<Button>().none{it.contentDescription=="Close ambient display"})
+    ambient.onBackPressedDispatcher.onBackPressed()
+   }
+   await("ambient Back exits display"){parent!!.isFinishing};check(!DisplaySession.enabled(ctx));check(WatchCache.state.optBoolean("listening"))
+   report.put("ambient_has_no_close_button",true).put("ambient_back_does_not_stop_recognition",true).put("status","passed")
   }catch(t:Throwable){failure=t;report.put("status","failed").put("error",t.stackTraceToString());runCatching{File(ctx.filesDir,"history-navigation-failure.png").outputStream().use{i.uiAutomation.takeScreenshot().compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)}}}
   finally{
    ui{dialog?.dismiss();child?.finish();parent?.finish();DisplaySession.close(ctx)}
