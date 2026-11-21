@@ -24,7 +24,15 @@ data class Candidate(val id:String,val orchestra:String,val title:String,val sin
    val dj=j.optJSONObject("dj")
    return Candidate(id,j.optString("orchestra"),j.optString("title"),j.optString("singer"),j.optString("year"),score,confidence.coerceIn(0,100),j.optDouble("speed",1.0),j.optString("groupId",j.optString("group_id",id)).ifBlank{id},sources,options,j.toString(),j.optJSONArray("presentationContributors")?.let{a->(0 until a.length()).mapNotNull{a.optJSONObject(it)?.toString()}}?:emptyList(),dj?.optBoolean("requested")?:false,dj?.optBoolean("available")?:false,dj?.optString("dataVersion")?:"",(dj?.optDouble("songPercent",0.0)?:0.0)/100,(dj?.optDouble("orchestraPercent",0.0)?:0.0)/100,(dj?.optDouble("pairPercent",0.0)?:0.0)/100)
   }
-  fun distinctRunner(best:Candidate?,candidates:List<Candidate>)=if(best==null)null else candidates.filter{!best.sameRecording(it)}.maxByOrNull{it.score}
+  /** Strongest challenger for the song-identification score gap. */
+  fun distinctRunner(best: Candidate?, candidates: List<Candidate>): Candidate? {
+   if (best == null) return null
+   val titleKey = MetadataLabels.unambiguousTitleKey(best)
+   return candidates.asSequence()
+    .filterNot { best.sameRecording(it) }
+    .filterNot { titleKey != null && titleKey == MetadataLabels.unambiguousTitleKey(it) }
+    .maxByOrNull { it.score }
+  }
  }
 }
 object MetadataLabels{
@@ -42,7 +50,7 @@ object MetadataLabels{
  }
  fun orchestraKey(candidate:Candidate):String?{val labels=resolve(candidate,"orchestra");if(labels.size!=1)return null;val label=labels.single();val key=folded(label).replace(Regex("^(?:orquesta(?: tipica)?|orq(?: tipica)?) +"),"");return key.takeIf{it.isNotEmpty()&&!label.contains('?')&&it !in setOf("unknown","unidentified","desconocido","desconocida","sin identificar","no identificado","not known")}}
  private fun quality(value:String)=value.count{it.code>127}*4+(if(value.any{it.isLowerCase()}&&value.any{it.isUpperCase()})2 else 0)
- private fun equivalent(values:List<String>,field:String):List<String>{val choices=linkedMapOf<String,String>();for(v in values){val key=DisplayLabelKey.normalize(v).ifEmpty{"\u0000$v"};val old=choices[key];if(old==null||quality(v)>quality(old))choices[key]=v};return choices.values.toList()}
+ private fun equivalent(values:List<String>,field:String):List<String>{val choices=linkedMapOf<String,String>();for(v in values){val key=(if(field=="title")DisplayLabelKey.normalizeTitle(v) else DisplayLabelKey.normalize(v)).ifEmpty{"\u0000$v"};val old=choices[key];if(old==null||quality(v)>quality(old))choices[key]=v};return choices.values.toList()}
  fun resolve(candidate:Candidate,field:String):List<String>{var values=candidate.labels(field)
   if(field=="orchestra")values=values.map(::shortOrchestra)
   if(field=="singer")values=values.filterNot{it.trim().equals("instrumental",ignoreCase=true)}
@@ -52,6 +60,10 @@ object MetadataLabels{
    values=values.map{title->val parts=Regex("^(.+?)\\s+[-–—|]\\s+(.+)$").matchEntire(title);if(parts==null)title else{val base=parts.groupValues[1];val suffix=folded(parts.groupValues[2]).split(' ').filter{it.isNotBlank()};val corroborated=values.firstOrNull{folded(it)==folded(base)};if(corroborated!=null&&suffix.isNotEmpty()&&suffix.all{it in creditWords}&&suffix.any{it !in setOf("orquesta","tipica","orq","con","canta","y")})corroborated else title}}
   }
   return equivalent(values,field)
+ }
+ fun unambiguousTitleKey(candidate: Candidate): String? {
+  val title = resolve(candidate, "title").singleOrNull() ?: return null
+  return DisplayLabelKey.normalizeTitle(title).takeIf { it.isNotEmpty() }
  }
  fun watchTitles(candidate:Candidate):List<String>{
   val titles=resolve(candidate,"title").map { title ->
@@ -65,9 +77,9 @@ object MetadataLabels{
    val note=trailingTitleNote.matchEntire(title) ?: continue
    val annotation=folded(note.groupValues[2].ifEmpty{note.groupValues[3]})
    if(annotation.isNotBlank()&&!recordingNote.containsMatchIn(annotation))
-    preferredTitles.putIfAbsent(DisplayLabelKey.normalize(note.groupValues[1]),title)
+    preferredTitles.putIfAbsent(DisplayLabelKey.normalizeTitle(note.groupValues[1]),title)
   }
-  return equivalent(titles.map{preferredTitles[DisplayLabelKey.normalize(it)] ?: it},"title")
+  return equivalent(titles.map{preferredTitles[DisplayLabelKey.normalizeTitle(it)] ?: it},"title")
  }
  private data class DateLabel(val text:String,val from:java.time.LocalDate,val to:java.time.LocalDate)
  private fun dateLabel(value:String):DateLabel?=runCatching{

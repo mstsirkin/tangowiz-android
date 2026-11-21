@@ -300,9 +300,9 @@ class RecognitionService:Service(){
     synchronized(stateLock){if(active(token))LiveState.publish(RecognitionState(listening=true,resident=true,phase="♪",best=best,second=second,seconds=offset+1))}
     val acoustic=OrchestraPresentation.candidates(selectedResult).sortedByDescending{it.score}
     val acousticBest=acoustic.firstOrNull()
-    val runnerScore=Candidate.distinctRunner(acousticBest,acoustic)?.score?:0.0
+    val titleRunnerScore=Candidate.distinctRunner(acousticBest,acoustic)?.score?:0.0
     val warningConfidence=acousticBest?.let{ConfidenceCalibration.percent(bundle,it.score)}?:0
-    val warningUnambiguous=acousticBest!=null&&acousticBest.score-runnerScore>=.08
+    val warningUnambiguous=acousticBest!=null&&acousticBest.score-titleRunnerScore>=.08
     val warningCandidate=acousticBest?.rawJson?.let{JSONObject(it)}
     val timelyWarning=queue.size<=2&&active(token)
     val ending=if(settled&&audibleWindow&&warningCandidate!=null){

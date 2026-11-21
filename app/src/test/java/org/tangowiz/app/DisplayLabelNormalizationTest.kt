@@ -29,7 +29,7 @@ class DisplayLabelNormalizationTest {
 
  @Test fun equivalentDisplayFormattingCollapses() {
   for((a,b) in listOf("C. T. V." to "CTV", "No te quiero más" to "Notequieromas",
-   "María Remedios" to "MARIA REMEDIOS", "Cardo\u00a0azul" to "Cardo azul")) {
+   "María Remedios" to "MARIA REMEDIOS", "Cardo\u00a0azul" to "Cardo azul", "A, B" to "A B")) {
    assertEquals("Expected equivalent display labels: $a / $b",1,labels(a,b).size)
   }
  }
@@ -40,7 +40,7 @@ class DisplayLabelNormalizationTest {
   }
  }
  @Test fun otherPunctuationAndAnnotationsRemainDistinct() {
-  for((a,b) in listOf("A-B" to "A B", "A, B" to "A B", "A/B" to "A B",
+  for((a,b) in listOf("A-B" to "A B", "Tema 1,2" to "Tema 12", "A/B" to "A B",
    "Pasional (1951)" to "Pasional", "Desde el alma (Vals 1970)" to "Desde el alma")) {
    assertEquals("Must retain distinct labels: $a / $b",2,labels(a,b).size)
   }
