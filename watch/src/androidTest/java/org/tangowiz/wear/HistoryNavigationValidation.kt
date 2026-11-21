@@ -67,8 +67,6 @@ object HistoryNavigationValidation {
    parent!!.let{a->ui{a.finish()}};i.waitForIdleSync()
    parent=i.startActivitySync(Intent(ctx,AmbientDisplayActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));await("maximized focus"){parent!!.hasWindowFocus()}
    child=openBySwipe(parent!!);closeHistory(child!!,parent!!)
-   check(ctx.getSystemService(android.app.NotificationManager::class.java).activeNotifications.none{it.notification.channelId=="watch-display"})
-   report.put("ambient_has_no_display_notification",true)
    check(DisplaySession.enabled(ctx));report.put("history_close_returns_to_original_maximized_activity",true)
    child=openBySwipe(parent!!);swipe(child!!,true);await("maximized resumed after swipe"){parent!!.hasWindowFocus()};check(DisplaySession.enabled(ctx));child=null
    report.put("history_swipe_returns_to_original_maximized_activity",true)

@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.view.View
 import android.widget.TextView
+import androidx.wear.ongoing.OngoingActivity
 import org.json.JSONObject
 import java.io.File
 
@@ -27,8 +28,7 @@ object AmbientValidation {
    val fixture=JSONObject(old.toString()).put("revision",old.optLong("revision")+1000).put("updatedAt",System.currentTimeMillis()).put("listening",true).put("microphone","phone").put("error","").put("best",JSONObject().put("orchestra","Ambient test A").put("title","First title").put("percent",75))
    ui{WatchCache.connected=true;WatchCache.accept(fixture)}
    activity=i.startActivitySync(Intent(ctx,AmbientDisplayActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as AmbientDisplayActivity;created=true;i.waitForIdleSync()
-   check(ctx.getSystemService(NotificationManager::class.java).activeNotifications.none{it.notification.channelId=="watch-display"})
-   report.put("no_display_notification",true)
+   await("Ongoing display notification",10000){OngoingActivity.recoverOngoingActivity(ctx)!=null}
    check(name()=="Ambient test A")
    save("waiting_for_sleep")
    await("OS ambient entry",45000){ambient()}
@@ -45,7 +45,7 @@ object AmbientValidation {
    SystemClock.sleep(75000)
    check(field("started").getBoolean(activity)&&!activity!!.isFinishing){"System returned away from display during ambient"}
    check(ambient()){"Ambient state ended unexpectedly"}
-   report.put("ambient_retention_seconds",75)
+   report.put("ambient_retention_seconds",75).put("ongoing_activity_metadata",true)
    save("waiting_for_wake")
    await("OS ambient exit",45000){!ambient()}
    i.waitForIdleSync()
@@ -54,8 +54,8 @@ object AmbientValidation {
    report.put("latest_cache_rendered_on_wake",true)
    save("awake_screenshot")
    SystemClock.sleep(5000)
-   ui{activity!!.onBackPressedDispatcher.onBackPressed()}
-   await("Back ends display",10000){activity!!.isFinishing}
+   ctx.startService(Intent(ctx,WatchDisplayService::class.java).setAction(DisplaySession.STOP))
+   await("Close display ends activity and notification",10000){activity!!.isFinishing&&ctx.getSystemService(NotificationManager::class.java).activeNotifications.none{it.id==DisplaySession.NOTIFICATION}}
    check(!DisplaySession.enabled(ctx));check(WatchCache.state.getBoolean("listening")){"Closing display changed recognition state"}
    report.put("explicit_close_stops_display_only",true).put("status","passed")
   }catch(e:Throwable){failure=e;report.put("status","failed").put("error",e.stackTraceToString())}
