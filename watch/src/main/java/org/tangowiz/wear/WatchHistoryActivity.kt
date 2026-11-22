@@ -25,8 +25,20 @@ class WatchHistoryActivity:Activity(){
   val footer=LinearLayout(this).apply{gravity=Gravity.CENTER}
   val refresh=Button(this).apply{text="↻";contentDescription="Refresh history";setOnClickListener{WatchLink.history()}}
   footer.addView(refresh,LinearLayout.LayoutParams(dp(48),dp(48)))
-  val close=Button(this).apply{text="Close";contentDescription="Close history";setOnClickListener{finish()}}
-  footer.addView(close,LinearLayout.LayoutParams(dp(82),dp(48)))
+  val close=Button(this).apply{
+   text="⊗"
+   textSize=16f
+   setTextColor(Color.WHITE)
+   setPadding(0,0,0,0)
+   background=android.graphics.drawable.RippleDrawable(
+    android.content.res.ColorStateList.valueOf(0x33FFFFFF),
+    null,
+    android.graphics.drawable.GradientDrawable().apply{shape=android.graphics.drawable.GradientDrawable.OVAL;setColor(Color.WHITE)}
+   )
+   contentDescription="Close history"
+   setOnClickListener{finish()}
+  }
+  footer.addView(close,LinearLayout.LayoutParams(dp(48),dp(48)))
   root.addView(footer,LinearLayout.LayoutParams(-1,dp(48)).apply{bottomMargin=dp(20)})
   setContentView(SwipeDismissFrameLayout(this).apply{
    addView(root)
