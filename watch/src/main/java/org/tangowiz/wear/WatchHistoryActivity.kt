@@ -2,7 +2,10 @@ package org.tangowiz.wear
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -23,22 +26,8 @@ class WatchHistoryActivity:Activity(){
   scroll=ScrollView(this).apply{addView(body)}
   root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
   val footer=LinearLayout(this).apply{gravity=Gravity.CENTER}
-  val refresh=Button(this).apply{text="↻";contentDescription="Refresh history";setOnClickListener{WatchLink.history()}}
-  footer.addView(refresh,LinearLayout.LayoutParams(dp(48),dp(48)))
-  val close=Button(this).apply{
-   text="⊗"
-   textSize=16f
-   setTextColor(Color.WHITE)
-   setPadding(0,0,0,0)
-   background=android.graphics.drawable.RippleDrawable(
-    android.content.res.ColorStateList.valueOf(0x33FFFFFF),
-    null,
-    android.graphics.drawable.GradientDrawable().apply{shape=android.graphics.drawable.GradientDrawable.OVAL;setColor(Color.WHITE)}
-   )
-   contentDescription="Close history"
-   setOnClickListener{finish()}
-  }
-  footer.addView(close,LinearLayout.LayoutParams(dp(48),dp(48)))
+  footer.addView(historyButton("↻","Refresh history"){WatchLink.history()},LinearLayout.LayoutParams(dp(48),dp(48)))
+  footer.addView(historyButton("⊗","Close history"){finish()},LinearLayout.LayoutParams(dp(48),dp(48)))
   root.addView(footer,LinearLayout.LayoutParams(-1,dp(48)).apply{bottomMargin=dp(20)})
   setContentView(SwipeDismissFrameLayout(this).apply{
    addView(root)
@@ -46,6 +35,19 @@ class WatchHistoryActivity:Activity(){
   })
   window.decorView.isFocusableInTouchMode=true;window.decorView.requestFocus()
   window.decorView.setOnGenericMotionListener{_,e->if(e.action==android.view.MotionEvent.ACTION_SCROLL){scroll.smoothScrollBy(0,(-e.getAxisValue(android.view.MotionEvent.AXIS_SCROLL)*dp(36)).toInt());true}else false}
+ }
+ private fun historyButton(symbol:String,description:String,action:()->Unit)=Button(this).apply{
+  text=symbol
+  textSize=16f
+  setTextColor(Color.WHITE)
+  setPadding(0,0,0,0)
+  background=RippleDrawable(
+   ColorStateList.valueOf(0x33FFFFFF),
+   null,
+   GradientDrawable().apply{shape=GradientDrawable.OVAL;setColor(Color.WHITE)}
+  )
+  contentDescription=description
+  setOnClickListener{action()}
  }
  override fun onStart(){super.onStart();visible=true;WatchCache.listeners.add(changed);render();WatchLink.history()}
  override fun onStop(){visible=false;WatchCache.listeners.remove(changed);super.onStop()}
