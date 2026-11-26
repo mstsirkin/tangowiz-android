@@ -10,6 +10,9 @@ public final class DisplayLabelKey {
     private static final Pattern LEADING_EL = Pattern.compile("^[\\s\\p{Z}]*el[\\s\\p{Z}]+(?=\\p{L})");
     private static final Pattern DE_ARTICLE = Pattern.compile("(?<![\\p{L}\\p{N}])(?:del|de[\\s\\p{Z}]+el)(?=[\\s\\p{Z}]+\\p{L})");
 
+    private static final Pattern TRAILING_NOTE = Pattern.compile("\\s*(?:\\([^()]*\\)|\\[[^\\[\\]]*\\])$");
+    private static final Pattern TRAILING_MILONGA = Pattern.compile("[\\s\\p{Z}]+milonga$", Pattern.CASE_INSENSITIVE);
+
     private DisplayLabelKey() {}
     public static String normalize(String value) {
         String text = Normalizer.normalize(value, Normalizer.Form.NFD).toLowerCase(Locale.ROOT);
@@ -26,6 +29,16 @@ public final class DisplayLabelKey {
         String text = FORMATTING_COMMA.matcher(value.toLowerCase(Locale.ROOT)).replaceAll(" ");
         text = LEADING_EL.matcher(text).replaceFirst("");
         return normalize(DE_ARTICLE.matcher(text).replaceAll("de"));
+    }
+    /** Work-level ranking equivalence. Recording identities and labels retain their versions. */
+    public static String normalizeWorkTitle(String value) {
+        String title = value.trim();
+        while (true) {
+            String base = TRAILING_NOTE.matcher(title).replaceFirst("").trim();
+            base = TRAILING_MILONGA.matcher(base).replaceFirst("").trim();
+            if (base.isEmpty() || base.equals(title)) return normalizeTitle(title);
+            title = base;
+        }
     }
     public static boolean equivalent(String a, String b) {
         String key = normalize(a);

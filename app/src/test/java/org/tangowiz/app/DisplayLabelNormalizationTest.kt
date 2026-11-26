@@ -8,6 +8,55 @@ class DisplayLabelNormalizationTest {
   "recording","Orchestra",titles.first(),metadataAlternatives=mapOf("title" to titles.toList())
  ).watchTitle()
 
+ @Test fun phoneUsesTheWatchTitleRule() {
+  for (titles in listOf(
+   listOf("Gran Hotel Victoria", "Gran Hotel Victoria (Hotel Victoria)"),
+   listOf("Cacareando [Milonga]", "Cacareando"),
+   listOf("Desde el alma", "Desde el Alma (En Vivo)")
+  )) {
+   val candidate = Candidate(
+    "recording", "Orchestra", titles.first(), metadataAlternatives = mapOf("title" to titles)
+   )
+   assertEquals(candidate.watchTitle(), candidate.display("title"))
+  }
+ }
+
+ @Test fun displayHidesStandaloneLiveNotesAndPreservesTheSourceTitle() {
+  val original = "Desde el Alma (En Vivo)"
+  val candidate = Candidate(
+   "recording", "Orchestra", original,
+   metadataAlternatives = mapOf("title" to listOf("Desde el alma", original))
+  )
+  assertEquals("Desde el alma", candidate.display("title"))
+  assertEquals("Desde el Alma", watchTitle("Desde el Alma [En Vivo]"))
+  assertEquals(original, candidate.title)
+  assertEquals("Desde el Alma (En Vivo 2008)", watchTitle("Desde el Alma (En Vivo 2008)"))
+ }
+
+ @Test fun trailingGenreWordsCollapseWhenTheBaseTitleIsPresent() {
+  for (genre in listOf("Milonga", "Tango", "Vals", "Tango Vals")) {
+   assertEquals("Cacareando", watchTitle("Cacareando ${genre}", "Cacareando"))
+  }
+ }
+
+ @Test fun trailingGenreWordsRemainInStandaloneTitles() {
+  assertEquals("El último tango", watchTitle("El último tango"))
+  assertEquals("Milonga", watchTitle("Milonga"))
+ }
+
+ @Test fun standaloneAlternateNameCollapsesIntoTheAnnotatedTitle() {
+  assertEquals(
+   "Gran Hotel Victoria (Hotel Victoria)",
+   watchTitle("Hotel Victoria", "Gran Hotel Victoria", "Gran Hotel Victoria (Hotel Victoria)")
+  )
+  assertEquals("Title [Alternate]", watchTitle("Title [Alternate]", "Alternate"))
+ }
+
+ @Test fun sharedAlternateNamesAndVersionNotesDoNotMergeDistinctLabels() {
+  assertEquals("Shared / First (Shared) / Second (Shared) ?", watchTitle("Shared", "First (Shared)", "Second (Shared)"))
+  assertEquals("1951 / Pasional (1951) ?", watchTitle("1951", "Pasional (1951)"))
+ }
+
  @Test fun watchShowsOneTitleForAnAlternateNameAndDropsGenreTags() {
   assertEquals("Argañaraz (Aquellas farras)",watchTitle("Argañaraz","Argañaraz (Aquellas farras)"))
   assertEquals("Más allá",watchTitle("Más allá (tango)"))

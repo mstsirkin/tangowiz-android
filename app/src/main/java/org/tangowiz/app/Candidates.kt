@@ -10,8 +10,8 @@ data class Candidate(val id:String,val orchestra:String,val title:String,val sin
  val aliases: Set<String> get()=(sourceIds+id).filter{it.isNotBlank()}.toSet()
  fun sameRecording(other:Candidate)=groupId.isNotBlank()&&groupId==other.groupId||aliases.intersect(other.aliases).isNotEmpty()
  fun labels(field:String):List<String>{val scalar=when(field){"orchestra"->orchestra;"title"->title;"singer"->singer;"year"->year;else->""};return (metadataAlternatives[field].orEmpty()+scalar).map{it.trim()}.filter{it.isNotEmpty()}.distinct()}
- fun display(field:String):String=displayValues(MetadataLabels.resolve(this,field))
- fun watchTitle():String=displayValues(MetadataLabels.watchTitles(this))
+ fun display(field:String):String=displayValues(if(field=="title") MetadataLabels.displayTitles(this) else MetadataLabels.resolve(this,field))
+ fun watchTitle():String=display("title")
  private fun displayValues(values:List<String>):String=values.joinToString(" / ")+
   (if(values.size>1)" ?" else "")
  fun alternativesJson()=JSONObject().also{j->for(field in MetadataLabels.fields)j.put(field,JSONArray(labels(field)))}
@@ -38,7 +38,8 @@ data class Candidate(val id:String,val orchestra:String,val title:String,val sin
 object MetadataLabels{
  val fields=listOf("orchestra","title","singer","year")
  private val trailingTitleNote=Regex("""^(.+?)\s*(?:\(([^()]*)\)|\[([^\[\]]*)\])$""")
- private val genreNotes=setOf("tango","vals","tango vals","milonga")
+ private val trailingGenreWord=Regex("""^(.+?)\s+(?:tango\s+vals|tango|vals|milonga)$""",RegexOption.IGNORE_CASE)
+ private val hiddenTitleNotes=setOf("tango","vals","tango vals","milonga","en vivo")
  private val recordingNote=Regex(
   """\p{N}|\b(?:version|live|vivo|directo|instrumental|vocal|take|toma|remaster\w*|grabacion|edit|mix|demo|acustic\w*|alternativ[ao]|arr(?:eglo)?)\b"""
  )
@@ -61,25 +62,36 @@ object MetadataLabels{
   }
   return equivalent(values,field)
  }
- fun unambiguousTitleKey(candidate: Candidate): String? {
-  val title = resolve(candidate, "title").singleOrNull() ?: return null
-  return DisplayLabelKey.normalizeTitle(title).takeIf { it.isNotEmpty() }
- }
- fun watchTitles(candidate:Candidate):List<String>{
+ fun unambiguousTitleKey(candidate: Candidate): String? =
+  resolve(candidate, "title").map(DisplayLabelKey::normalizeWorkTitle)
+   .distinct().singleOrNull()?.takeIf { it.isNotEmpty() }
+ fun displayTitles(candidate:Candidate):List<String>{
   val titles=resolve(candidate,"title").map { title ->
    val note=trailingTitleNote.matchEntire(title)
-   if(note!=null&&folded(note.groupValues[2].ifEmpty{note.groupValues[3]}) in genreNotes)
+   if(note!=null&&folded(note.groupValues[2].ifEmpty{note.groupValues[3]}) in hiddenTitleNotes)
     note.groupValues[1].trimEnd()
    else title
   }
-  val preferredTitles=mutableMapOf<String,String>()
-  for(title in titles){
-   val note=trailingTitleNote.matchEntire(title) ?: continue
-   val annotation=folded(note.groupValues[2].ifEmpty{note.groupValues[3]})
-   if(annotation.isNotBlank()&&!recordingNote.containsMatchIn(annotation))
-    preferredTitles.putIfAbsent(DisplayLabelKey.normalizeTitle(note.groupValues[1]),title)
+  val shownByKey=titles.associateBy{DisplayLabelKey.normalizeTitle(it)}
+  val withoutGenreWords=titles.map { title ->
+   val base=trailingGenreWord.matchEntire(title)?.groupValues?.get(1)
+   base?.let{shownByKey[DisplayLabelKey.normalizeTitle(it)]} ?: title
   }
-  return equivalent(titles.map{preferredTitles[DisplayLabelKey.normalizeTitle(it)] ?: it},"title")
+  val preferredTitles=mutableMapOf<String,String>()
+  val alternateTitles=mutableMapOf<String,MutableSet<String>>()
+  for(title in withoutGenreWords){
+   val note=trailingTitleNote.matchEntire(title) ?: continue
+   val annotation=note.groupValues[2].ifEmpty{note.groupValues[3]}
+   val foldedAnnotation=folded(annotation)
+   if(foldedAnnotation.isBlank()||recordingNote.containsMatchIn(foldedAnnotation))continue
+   preferredTitles.putIfAbsent(DisplayLabelKey.normalizeTitle(note.groupValues[1]),title)
+   val alternateKey=DisplayLabelKey.normalizeTitle(annotation)
+   alternateTitles.getOrPut(alternateKey){linkedSetOf()}.add(title)
+  }
+  return equivalent(withoutGenreWords.map{title->
+   val key=DisplayLabelKey.normalizeTitle(title)
+   preferredTitles[key] ?: alternateTitles[key]?.singleOrNull() ?: title
+  },"title")
  }
  private data class DateLabel(val text:String,val from:java.time.LocalDate,val to:java.time.LocalDate)
  private fun dateLabel(value:String):DateLabel?=runCatching{

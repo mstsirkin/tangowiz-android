@@ -25,6 +25,16 @@ class RecognitionTitleVariantsTest {
         assertEquals(rival, runner)
     }
 
+    @Test fun scoreGapTreatsDecoratedVersionsAsTheSameWork() {
+        val best = Candidate("original", "Los Herederos del Compás", "Bella Ciao Milonga (original version)", score = .91)
+        val otherVersion = Candidate("percussion", "Los Herederos del Compás", "Bella Ciao [Percussion Version]", score = .90)
+        val plainTitle = Candidate("plain", "Los Herederos del Compás", "Bella Ciao Milonga", score = .89)
+        val rival = Candidate("rival", "Los Herederos del Compás", "Otra milonga", score = .80)
+
+        assertEquals(rival, Candidate.distinctRunner(best, listOf(best, otherVersion, plainTitle, rival)))
+        assertEquals(false, best.sameRecording(otherVersion))
+    }
+
     @Test fun missingOrAmbiguousTitlesStillCompete() {
         val best = Candidate("a", "First orchestra", "El tango del barrio", score = .91)
         val blank = Candidate("b", "Second orchestra", "", score = .90)
