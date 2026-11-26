@@ -52,6 +52,13 @@ class Store(val context:Context) {
  var watchImmediatePercent:Int get()=prefs.getInt("watch_immediate_percent",org.tangowiz.link.WatchUpdateSettings.DEFAULT_IMMEDIATE_PERCENT).coerceIn(0,100);set(v){prefs.edit().putInt("watch_immediate_percent",v.coerceIn(0,100)).commit()}
  var watchUpdateInterval:Long get()=prefs.getLong("watch_update_interval",5000L).coerceIn(2000L,60000L);set(v){prefs.edit().putLong("watch_update_interval",v.coerceIn(2000L,60000L)).commit()}
  var dj:Boolean get()=prefs.getBoolean("dj_popularity",false);set(v){prefs.edit().putBoolean("dj_popularity",v).commit()}
+ var cleanHistoryEnabled:Boolean
+  get()=prefs.getBoolean("clean_history_enabled",true)
+  set(value){
+   prefs.edit().putBoolean("clean_history_enabled",value).apply()
+   LiveState.historyVersion.incrementAndGet()
+  }
+ fun displayHistory():List<JSONObject> = CleanHistory.rows(history(),cleanHistoryEnabled)
  var disableShortWindow:Boolean
   get()=prefs.getBoolean("disable_short_window",false)
   set(value){prefs.edit().putBoolean("disable_short_window",value).apply()}
@@ -68,9 +75,12 @@ class Store(val context:Context) {
  var timing:Boolean get()=prefs.getBoolean("timing",false); set(v){prefs.edit().putBoolean("timing",v).apply()}
  fun append(file:File,json:JSONObject)=synchronized(SessionFiles.lock){file.appendText(json.toString()+"\n")}
  fun history():List<JSONObject> = synchronized(SessionFiles.lock){if(!history.exists()) emptyList() else java.io.RandomAccessFile(history,"r").use{f->val start=(f.length()-512000).coerceAtLeast(0);f.seek(start);val bytes=ByteArray((f.length()-start).toInt());f.readFully(bytes);bytes.toString(Charsets.UTF_8).lineSequence().mapNotNull{runCatching{JSONObject(it)}.getOrNull()}.toList().takeLast(1000)}}
- fun result(c:Candidate,second:Candidate?, seconds:Double,session:String,rawResult:JSONObject?=null){
+ fun result(c:Candidate,second:Candidate?, seconds:Double,session:String,rawResult:JSONObject?=null,confirmed:Boolean=false){
   if(!ConfidenceVisibility.visible(c.confidence))return
-  append(history,JSONObject().put("time",Instant.now().toString()).put("session",session).put("audio_seconds",seconds).put("id",c.id).put("sourceIds",JSONArray(c.aliases.sorted())).put("metadataAlternatives",c.alternativesJson()).put("presentationContributors",JSONArray(c.presentationContributors.map{raw->val contributor=JSONObject(raw);JSONObject().put("id",contributor.optString("id")).put("sourceIds",contributor.optJSONArray("sourceIds")?:JSONArray()).put("score",contributor.optDouble("score",0.0)).put("speed",contributor.optDouble("speed",1.0))})).put("orchestra",c.orchestra).put("title",c.title).put("singer",c.singer).put("year",c.year).put("score",c.score).put("ranking_score",c.rankingScore).put("dj",DjPopularity.record(c)).put("confidence_score",c.confidence).put("speed",c.speed).put("state",if(c.confidence>=70) "strong" else "tentative").put("runner_up",second?.id ?: ""));if(rawResult!=null){val dir=File(root,session).apply{mkdirs()};append(File(dir,"matches.jsonl"),JSONObject().put("time",Instant.now().toString()).put("audio_seconds",seconds).put("result",rawResult))};LiveState.historyVersion.incrementAndGet()
+  val row=JSONObject().put("time",Instant.now().toString()).put("session",session).put("audio_seconds",seconds).put("id",c.id).put("sourceIds",JSONArray(c.aliases.sorted())).put("metadataAlternatives",c.alternativesJson()).put("presentationContributors",JSONArray(c.presentationContributors.map{raw->val contributor=JSONObject(raw);JSONObject().put("id",contributor.optString("id")).put("sourceIds",contributor.optJSONArray("sourceIds")?:JSONArray()).put("score",contributor.optDouble("score",0.0)).put("speed",contributor.optDouble("speed",1.0))})).put("orchestra",c.orchestra).put("title",c.title).put("singer",c.singer).put("year",c.year).put("score",c.score).put("ranking_score",c.rankingScore).put("dj",DjPopularity.record(c)).put("confidence_score",c.confidence).put("speed",c.speed).put("state",if(c.confidence>=70) "strong" else "tentative").put("runner_up",second?.id ?: "")
+  CleanHistory.evidence(rawResult,c,seconds,confirmed)?.let{row.put("clean_history",it)}
+  append(history,row)
+  if(rawResult!=null){val dir=File(root,session).apply{mkdirs()};append(File(dir,"matches.jsonl"),JSONObject().put("time",Instant.now().toString()).put("audio_seconds",seconds).put("result",rawResult))};LiveState.historyVersion.incrementAndGet()
  }
  fun export(progress:(ExportProgress)->Unit={},cancelled:()->Boolean={false}):File {
   SessionFiles.beginExport(root)

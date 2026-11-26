@@ -296,7 +296,6 @@ class RecognitionService:Service(){
     val settled=EarlyAnswerGate.visible(selectedResult?.optInt("frames")?:0,store.earlyAnswerGate)
     val presented=if(!settled)emptyList() else OrchestraPresentation.merge(boosted).map{it.copy(confidence=ConfidenceCalibration.percent(bundle,it.rankingScore))}.filter{ConfidenceVisibility.visible(it.confidence)};val best=presented.firstOrNull();val second=presented.getOrNull(1)
     selectedResult=selectedResult?.let{JSONObject(it.toString()).put("dj",JSONObject().put("requested",djRequested).put("available",djData!=null).put("dataVersion",djData?.version?:""))}
-    if(best!=null&&(lastLogged==null||!best.sameRecording(lastLogged!!)||best.djRequested!=lastLogged!!.djRequested||best.djAvailable!=lastLogged!!.djAvailable||best.djVersion!=lastLogged!!.djVersion||offset-logSecond>=5)){val logged=best;val raw=selectedResult;io.execute{store.result(logged,second,offset+1,session,raw)};lastLogged=best;logSecond=offset}
     synchronized(stateLock){if(active(token))LiveState.publish(RecognitionState(listening=true,resident=true,phase="♪",best=best,second=second,seconds=offset+1))}
     val acoustic=OrchestraPresentation.candidates(selectedResult).sortedByDescending{it.score}
     val acousticBest=acoustic.firstOrNull()
@@ -316,6 +315,9 @@ class RecognitionService:Service(){
      }
     }else null
     val identification=vibration.observe(offset+1,if(settled&&audibleWindow)acousticBest?.groupId else null,warningConfidence,warningUnambiguous,null,timelyWarning)
+    val confirmed=identification==VibrationSignalPolicy.Signal.IDENTIFIED&&timelyWarning&&
+     acousticBest!=null&&best?.sameRecording(acousticBest)==true
+    if(best!=null&&(confirmed||lastLogged==null||!best.sameRecording(lastLogged!!)||best.djRequested!=lastLogged!!.djRequested||best.djAvailable!=lastLogged!!.djAvailable||best.djVersion!=lastLogged!!.djVersion||offset-logSecond>=5)){val logged=best;val raw=selectedResult;io.execute{store.result(logged,second,offset+1,session,raw,confirmed)};lastLogged=best;logSecond=offset}
     val signal=if(ending!=null)VibrationSignalPolicy.Signal.ENDING else identification
     // Audio backlog would make a timely warning arrive late in the room.
     if(signal!=VibrationSignalPolicy.Signal.NONE){
