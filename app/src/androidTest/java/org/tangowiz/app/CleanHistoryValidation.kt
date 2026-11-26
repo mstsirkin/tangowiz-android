@@ -2,8 +2,10 @@ package org.tangowiz.app
 
 import android.app.Instrumentation
 import android.content.Intent
+import android.graphics.Rect
 import android.os.Bundle
 import android.os.SystemClock
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityNodeInfo
@@ -27,13 +29,22 @@ object CleanHistoryValidation {
   fun click(node:AccessibilityNodeInfo?):Boolean {
    if(node==null)return false
    if(node.text?.toString()=="Clean History"){
-    var target:AccessibilityNodeInfo?=node
-    while(target!=null&&!target.isClickable)target=target.parent
-    return target?.performAction(AccessibilityNodeInfo.ACTION_CLICK)==true
+    val bounds=Rect()
+    node.getBoundsInScreen(bounds)
+    val time=SystemClock.uptimeMillis()
+    for(action in listOf(MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP)){
+     val event=MotionEvent.obtain(time,SystemClock.uptimeMillis(),action,bounds.exactCenterX(),bounds.exactCenterY(),0)
+     try{check(i.uiAutomation.injectInputEvent(event,true))}finally{event.recycle()}
+    }
+    return true
    }
    return (0 until node.childCount).any{click(node.getChild(it))}
   }
-  return click(i.uiAutomation.rootInActiveWindow)
+  val automation=i.uiAutomation
+  val info=automation.serviceInfo
+  info.flags=info.flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+  automation.serviceInfo=info
+  return click(automation.rootInActiveWindow)||automation.windows.any{click(it.root)}
  }
 
  fun run(i:Instrumentation){
